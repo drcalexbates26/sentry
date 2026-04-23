@@ -7,9 +7,10 @@ import { Badge, Button, Card, ProgressBar, ScoreGauge, SectionHeader } from "@/c
 import { CSF2 } from "@/data/csf2-controls";
 import { SCORE_LABELS } from "@/types/assessment";
 import type { Assessment, SmartQuestion } from "@/types/assessment";
+import { generateAssessmentReport } from "@/lib/assessment-report-generator";
 
 export function AssessmentModule() {
-  const { assessments, addAssessment, org, tech, addTask } = useStore();
+  const { assessments, addAssessment, org, tech, comp, addTask, forensicLogs } = useStore();
   const [mode, setMode] = useState(assessments.length > 0 ? "history" : "new");
   const [ans, setAns] = useState<Record<string, number>>({});
   const [activeFn, setActiveFn] = useState(0);
@@ -79,14 +80,16 @@ export function AssessmentModule() {
               <div style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>Assessment Date: {rpt.date} | Framework: NIST CSF 2.0</div>
             </div>
             <Button variant="outline" size="sm" onClick={() => {
-              const txt = `DARK ROCK LABS SENTRY\nCYBER RESILIENCE ASSESSMENT REPORT\n${"═".repeat(60)}\n\nOrganization: ${rpt.orgName}\nDate: ${rpt.date}\nFramework: NIST CSF 2.0\nOverall Score: ${rpt.score}/100\nInsurance Readiness: ${ir}\n\nFUNCTION SCORES\n${rpt.fnScores.map((f) => `${f.fn}: ${f.score}/100`).join("\n")}\n\nTOP RECOMMENDATIONS\n${rpt.recs.map((r, i) => `${i + 1}. [${r.id}] ${r.q} (Current: ${SCORE_LABELS[rpt.answers[r.id] || 0]})`).join("\n")}\n`;
-              const blob = new Blob([txt], { type: "text/plain" });
+              const report = generateAssessmentReport({
+                assessment: rpt, csf2: CSF2, org, tech, compliance: comp, forensics: forensicLogs,
+              });
+              const blob = new Blob([report], { type: "text/plain" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `Sentry_Assessment_${rpt.orgName.replace(/\s/g, "_")}.txt`;
+              a.download = `${rpt.orgName.replace(/\s/g, "_")}_Cyber_Resilience_Assessment_Report.txt`;
               a.click();
-            }}>Export Report</Button>
+            }}>Export Full Report</Button>
           </div>
         </Card>
 
