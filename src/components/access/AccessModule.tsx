@@ -31,7 +31,7 @@ export function AccessModule() {
         ))}
       </Card>
 
-      <Card>
+      <Card style={{ marginTop: 0 }}>
         <h3 style={{ color: colors.white, marginTop: 0, fontSize: 13 }}>RBAC Tiers</h3>
         {ROLES.map((role) => (
           <div key={role} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>

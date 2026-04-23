@@ -80,7 +80,14 @@ export function TicketsModule() {
           </div>
         </Card>
       )}
-      {tickets.map((tk) => (
+      {tickets.length === 0 && !showNew && (
+      <Card style={{ textAlign: "center", padding: "30px 18px" }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🎫</div>
+        <div style={{ color: colors.textDim, fontSize: 12, marginBottom: 4 }}>No tickets yet.</div>
+        <div style={{ color: colors.textDim, fontSize: 10 }}>Tickets are created from IR phases, playbooks, or manually.</div>
+      </Card>
+    )}
+    {tickets.map((tk) => (
         <Card key={tk.id} onClick={() => setSel(tk.id)} style={{ cursor: "pointer", marginBottom: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>

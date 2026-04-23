@@ -13,7 +13,9 @@ export function ForensicsModule() {
   return (
     <div>
       <SectionHeader sub="Encrypted evidence vault with chain-of-custody">Forensic Logs</SectionHeader>
-      <Button style={{ marginBottom: 12 }} onClick={() => setShowNew(true)}>+ New Entry</Button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <Button onClick={() => setShowNew(true)}>+ New Entry</Button>
+      </div>
       {showNew && (
         <Card style={{ marginBottom: 12, borderColor: colors.cyan + "44" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
@@ -27,6 +29,13 @@ export function ForensicsModule() {
             <Button onClick={() => { if (nf.title) { addForensicLog({ id: Date.now(), ...nf, created: new Date().toLocaleString(), locked: !!nf.encKey }); setShowNew(false); setNf({ title: "", classification: "Confidential", caseRef: "", description: "", encKey: "" }); } }}>Save</Button>
             <Button variant="secondary" onClick={() => setShowNew(false)}>Cancel</Button>
           </div>
+        </Card>
+      )}
+      {forensicLogs.length === 0 && !showNew && (
+        <Card style={{ textAlign: "center", padding: "30px 18px" }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🔒</div>
+          <div style={{ color: colors.textDim, fontSize: 12, marginBottom: 4 }}>No forensic entries yet.</div>
+          <div style={{ color: colors.textDim, fontSize: 10 }}>Add evidence logs with chain-of-custody documentation and encryption.</div>
         </Card>
       )}
       {forensicLogs.map((log) => (

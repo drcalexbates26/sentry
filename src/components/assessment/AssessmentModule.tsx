@@ -257,7 +257,8 @@ export function AssessmentModule() {
         </Card>
       ))}
 
-      <div style={{ position: "sticky", bottom: 0, background: colors.obsidian, padding: "10px 0", borderTop: `1px solid ${colors.panelBorder}` }}>
+      <div style={{ height: 16 }} />
+      <div style={{ position: "sticky", bottom: 0, background: colors.obsidian, padding: "10px 0", borderTop: `1px solid ${colors.panelBorder}`, zIndex: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {activeFn > 0 && <Button variant="secondary" size="sm" onClick={() => setActiveFn((p) => p - 1)}>← Prev</Button>}

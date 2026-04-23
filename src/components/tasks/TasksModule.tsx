@@ -40,11 +40,16 @@ export function TasksModule() {
         {COLS.map((col) => {
           const colTasks = tasks.filter((t) => t.status === col);
           return (
-            <div key={col} style={{ background: colors.obsidianL, borderRadius: 8, padding: 10, border: `1px solid ${colors.panelBorder}` }}>
+            <div key={col} style={{ background: colors.obsidianL, borderRadius: 8, padding: 10, border: `1px solid ${colors.panelBorder}`, minHeight: 200 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <h4 style={{ color: colors.textMuted, margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em" }}>{col}</h4>
                 <Badge color={col === "Done" ? colors.green : colors.textMuted}>{colTasks.length}</Badge>
               </div>
+              {colTasks.length === 0 && (
+                <div style={{ textAlign: "center", padding: "20px 0", color: colors.textDim, fontSize: 9 }}>
+                  No tasks
+                </div>
+              )}
               {colTasks.map((task) => (
                 <div key={task.id} style={{ background: colors.panel, borderRadius: 7, padding: 10, marginBottom: 8, borderLeft: `3px solid ${priColors[task.priority] || colors.teal}`, cursor: "pointer" }}
                   onClick={() => setEditId(editId === task.id ? null : task.id)}>

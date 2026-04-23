@@ -1,7 +1,7 @@
 "use client";
 
 import { colors } from "@/lib/tokens";
-import { Button, Card, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, SectionHeader } from "@/components/ui";
 
 export function CommsModule() {
   return (
@@ -26,7 +26,7 @@ export function CommsModule() {
               <span style={{ fontSize: 18 }}>{ch.i}</span>
               <div>
                 <div style={{ color: colors.white, fontWeight: 600, fontSize: 12 }}>{ch.n}</div>
-                <span style={{ display: "inline-block", padding: "2px 9px", borderRadius: 99, background: colors.green + "20", color: colors.green, fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>{ch.s}</span>
+                <Badge color={colors.green}>{ch.s}</Badge>
               </div>
             </div>
             <Button variant="outline" size="sm" style={{ width: "100%" }}>Configure</Button>

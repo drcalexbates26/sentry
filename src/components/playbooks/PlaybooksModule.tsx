@@ -156,7 +156,7 @@ export function PlaybooksModule() {
           );
         })}
 
-        <Card>
+        <Card style={{ marginTop: 4 }}>
           <h3 style={{ color: colors.white, marginTop: 0, fontSize: 13 }}>MITRE ATT&CK Mapping</h3>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{pb.mitre.map((m) => <Badge key={m} color={colors.blue}>{m}</Badge>)}</div>
         </Card>
