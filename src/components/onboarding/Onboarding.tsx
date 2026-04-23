@@ -5,7 +5,6 @@ import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Button, Card, Input, Select, Checkbox, SectionHeader } from "@/components/ui";
 import { TECH_OPTIONS, COMPLIANCE_OPTIONS, INDUSTRIES, ORG_SIZES } from "@/data/tech-options";
-import type { TechStack } from "@/types/organization";
 
 export function Onboarding() {
   const { onboardDone, org, tech, comp, setOrg, setTech, setComp, setOnboardDone, setPage } = useStore();

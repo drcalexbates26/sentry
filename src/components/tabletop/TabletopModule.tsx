@@ -2,15 +2,11 @@
 
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
-import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
-
-interface Exercise {
-  id: number; title: string; scenario: string; date: string; facilitator: string;
-  participants: string; status: string; rating: number; notes: string;
-}
+import { useStore } from "@/store";
+import { Badge, Button, Card, Input, SectionHeader } from "@/components/ui";
 
 export function TabletopModule() {
-  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const { tabletopExercises, addTabletopExercise } = useStore();
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", scenario: "", date: "", facilitator: "", participants: "", notes: "" });
 
@@ -59,7 +55,7 @@ export function TabletopModule() {
           <div style={{ display: "flex", gap: 6 }}>
             <Button onClick={() => {
               if (nf.title) {
-                setExercises((p) => [{ id: Date.now(), ...nf, status: "Scheduled", rating: 0, notes: "" }, ...p]);
+                addTabletopExercise({ id: Date.now(), ...nf, status: "Scheduled", rating: 0, notes: "" });
                 setShowNew(false);
                 setNf({ title: "", scenario: "", date: "", facilitator: "", participants: "", notes: "" });
               }
@@ -69,11 +65,11 @@ export function TabletopModule() {
         </Card>
       )}
 
-      {exercises.length === 0 ? (
+      {tabletopExercises.length === 0 ? (
         <Card style={{ textAlign: "center" }}>
           <p style={{ color: colors.textDim, fontSize: 12 }}>No exercises scheduled. Use ATLAS for automated exercises or schedule one manually.</p>
         </Card>
-      ) : exercises.map((ex) => (
+      ) : tabletopExercises.map((ex) => (
         <Card key={ex.id} style={{ marginBottom: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>

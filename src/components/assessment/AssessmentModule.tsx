@@ -9,7 +9,7 @@ import { SCORE_LABELS } from "@/types/assessment";
 import type { Assessment, SmartQuestion } from "@/types/assessment";
 
 export function AssessmentModule() {
-  const { assessments, addAssessment, org, tech, setPage, addTask } = useStore();
+  const { assessments, addAssessment, org, tech, addTask } = useStore();
   const [mode, setMode] = useState(assessments.length > 0 ? "history" : "new");
   const [ans, setAns] = useState<Record<string, number>>({});
   const [activeFn, setActiveFn] = useState(0);

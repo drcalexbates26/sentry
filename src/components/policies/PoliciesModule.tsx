@@ -8,7 +8,7 @@ import { POLICY_TEMPLATES } from "@/data/policy-templates";
 import { generatePolicy } from "@/lib/policy-generator";
 
 export function PoliciesModule() {
-  const { org, tech, comp, policiesGen, addPolicyGen } = useStore();
+  const { org, tech, comp, addPolicyGen } = useStore();
   const [sel, setSel] = useState<string | null>(null);
   const [gen, setGen] = useState<Record<string, string>>({});
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
@@ -17,20 +17,20 @@ export function StakeholdersModule() {
   const totalContacts = STAKEHOLDER_GROUPS.reduce((sum, g) => ((stakeholders[g.key] as StakeholderPerson[]) || []).length + sum, 0);
   const totalSystems = (stakeholders.keySystems || []).length;
 
-  const addPerson = (groupKey: string) => {
+  const addPerson = useCallback((groupKey: string) => {
     if (!nf.firstName || !nf.lastName) return;
     const person = { ...nf, id: Date.now() } as StakeholderPerson;
     updateStakeholders((p) => ({ ...p, [groupKey]: [...(p[groupKey] as StakeholderPerson[]), person] }));
     setNf({ firstName: "", lastName: "", title: "", responsibilities: "", email: "", cell: "" });
-  };
+  }, [nf, updateStakeholders]);
 
-  const addSystem = () => {
+  const addSystem = useCallback(() => {
     if (!nsf.systemName) return;
     const sys = { ...nsf, id: Date.now() } as KeySystem;
     updateStakeholders((p) => ({ ...p, keySystems: [...p.keySystems, sys] }));
     setNsf({ systemName: "", category: "", owner: "", ownerEmail: "", ownerCell: "", criticality: "High", notes: "" });
     setEditSys(null);
-  };
+  }, [nsf, updateStakeholders]);
 
   const exportStakeholders = () => {
     let txt = `DARK ROCK LABS SENTRY\nSTAKEHOLDER DIRECTORY\n${"═".repeat(60)}\nOrganization: ${org?.name || "[Organization]"}\nGenerated: ${new Date().toLocaleString()}\n\n`;

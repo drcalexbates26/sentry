@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Checkbox, Input, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Checkbox, SectionHeader } from "@/components/ui";
 import { IR_PHASES, SEV_LEVELS } from "@/data/ir-phases";
 
 export function IRPlanner() {

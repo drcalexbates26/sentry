@@ -16,7 +16,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addTicket, addCase, tasks, setPage } = useStore();
+  const { activeIncident, setActiveIncident, addCase } = useStore();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -51,6 +51,14 @@ export function Commander() {
   }, [inc.startTime, editing]);
 
   const save = (d?: Incident) => setActiveIncident(d || inc);
+
+  // Auto-save incident state to store when local state changes
+  useEffect(() => {
+    if (!editing && inc.title) {
+      const timeout = setTimeout(() => setActiveIncident(inc), 500);
+      return () => clearTimeout(timeout);
+    }
+  }, [inc, editing, setActiveIncident]);
   const addTL = (event: string) => setInc((p) => ({ ...p, timeline: [...p.timeline, { time: new Date().toLocaleString(), event, elapsed }] }));
   const totalHrs = inc.members.reduce((a, m) => a + m.hours, 0);
   const intCost = totalHrs * (inc.internalCostRate || 150);

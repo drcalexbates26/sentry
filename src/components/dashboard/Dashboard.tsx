@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Badge, Button, Card, ProgressBar, ScoreGauge, MiniChart } from "@/components/ui";
@@ -34,9 +35,12 @@ export function Dashboard() {
       ? `${openCases} open case${openCases !== 1 ? "s" : ""} and ${openTickets} open ticket${openTickets !== 1 ? "s" : ""} require attention.`
       : "No active incidents. Continue monitoring and preparedness activities.";
 
-  const closedCases = cases.filter((c) => c.status === "Closed");
-  const lastIncDate = closedCases.length ? new Date(closedCases[0].date) : null;
-  const daysSince = lastIncDate ? Math.floor((Date.now() - lastIncDate.getTime()) / 86400000) : null;
+  const daysSince = useMemo(() => {
+    const closedCasesList = cases.filter((c) => c.status === "Closed");
+    if (!closedCasesList.length) return null;
+    const lastIncDate = new Date(closedCasesList[0].date);
+    return Math.floor((new Date().getTime() - lastIncDate.getTime()) / 86400000);
+  }, [cases]);
 
   const sh: React.CSSProperties = { color: colors.textMuted, fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 };
   const dot = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: "50%", background: c, display: "inline-block" });
@@ -335,6 +339,7 @@ export function Dashboard() {
           { l: "IR Planner", d: "9-phase lifecycle", c: colors.orange, p: "irplan" },
           { l: "Commander", d: "Incident coordination", c: colors.red, p: "commander" },
           { l: "Playbooks", d: `${PLAYBOOKS.length} scenarios`, c: colors.purple, p: "playbooks" },
+          { l: "Tabletop", d: "ATLAS exercises", c: colors.yellow, p: "tabletop" },
           { l: "Tasks", d: "Kanban board", c: colors.cyan, p: "tasks" },
           { l: "Stakeholders", d: `${totalContacts} contacts`, c: colors.yellow, p: "stakeholders" },
           { l: "Policies", d: `${policiesCount} generated`, c: colors.blue, p: "policies" },

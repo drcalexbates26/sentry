@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
 import { PLAYBOOKS } from "@/data/playbooks";
 
 export function PlaybooksModule() {
-  const { cases, addCase, addTicket, addTask, addTasks } = useStore();
+  const { cases, addCase, addTicket, addTasks } = useStore();
   const [sel, setSel] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");
   const [pbChecks, setPbChecks] = useState<Record<string, boolean>>({});

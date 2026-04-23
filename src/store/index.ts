@@ -84,6 +84,10 @@ interface AppState {
   lessons: Lesson[];
   addLesson: (lesson: Lesson) => void;
 
+  // Tabletop Exercises
+  tabletopExercises: TabletopExercise[];
+  addTabletopExercise: (exercise: TabletopExercise) => void;
+
   // Policies
   policiesGen: string[];
   addPolicyGen: (id: string) => void;
@@ -96,6 +100,18 @@ export interface IRContact {
   name: string;
   role: string;
   email: string;
+}
+
+export interface TabletopExercise {
+  id: number;
+  title: string;
+  scenario: string;
+  date: string;
+  facilitator: string;
+  participants: string;
+  status: string;
+  rating: number;
+  notes: string;
 }
 
 export interface ForensicLogEntry {
@@ -182,6 +198,9 @@ export const useStore = create<AppState>((set) => ({
 
   lessons: [],
   addLesson: (lesson) => set((s) => ({ lessons: [lesson, ...s.lessons] })),
+
+  tabletopExercises: [],
+  addTabletopExercise: (exercise) => set((s) => ({ tabletopExercises: [exercise, ...s.tabletopExercises] })),
 
   policiesGen: [],
   addPolicyGen: (id) => set((s) => ({ policiesGen: [...new Set([...s.policiesGen, id])] })),
