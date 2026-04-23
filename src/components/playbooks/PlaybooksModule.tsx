@@ -5,9 +5,10 @@ import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
 import { PLAYBOOKS } from "@/data/playbooks";
+import { IR_PHASES } from "@/data/ir-phases";
 
 export function PlaybooksModule() {
-  const { cases, addCase, addTicket, addTasks } = useStore();
+  const { cases, addCase, addTicket, addTickets, addTasks } = useStore();
   const [sel, setSel] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");
   const [pbChecks, setPbChecks] = useState<Record<string, boolean>>({});
@@ -36,6 +37,10 @@ export function PlaybooksModule() {
 
   const assignToIncident = (pb: typeof PLAYBOOKS[0]) => {
     const caseId = Date.now();
+    // Map playbook phases to IR phases
+    const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
+    const incidentId = `INC-${caseId}`;
+
     const subtasks = [
       { k: "iocs", l: "IOC Verification", d: pb.iocs },
       { k: "contain", l: "Containment", d: pb.contain },
@@ -51,17 +56,42 @@ export function PlaybooksModule() {
         updates: [],
         created: new Date().toLocaleDateString(),
         source: `Playbook: ${pb.name}`,
+        irPhase: phaseToIR[phase.k] || undefined,
+        incidentId,
       }))
     );
 
+    // Create child tickets for each subtask
+    const childTickets = subtasks.map((t) => ({
+      id: t.id + 2000000,
+      title: t.title,
+      severity: t.priority,
+      status: "Open",
+      phase: t.irPhase ? (IR_PHASES.find((p) => p.id === t.irPhase)?.n || "") : "",
+      assignee: t.assignee,
+      details: `Auto-generated from playbook: ${pb.name}`,
+      actions: [] as { text: string; by: string; time: string }[],
+      created: t.created,
+      parentId: caseId,
+      incidentId,
+      incidentTitle: incTitle || `Incident: ${pb.name}`,
+      ticketType: "child" as const,
+    }));
+
+    // Create master ticket
     addTicket({
-      id: caseId, title: incTitle || `Incident: ${pb.name}`, status: "Open",
+      id: caseId, title: incTitle || `[INCIDENT] ${pb.name}`, status: "Open",
       severity: incSev, phase: "Playbook Activated", assignee: incAssignee || "",
       created: new Date().toLocaleDateString(),
       details: `Playbook activated: ${pb.name}\nSeverity: ${pb.sev}\nCategory: ${pb.cat}\n\nMITRE ATT&CK: ${pb.mitre.join(", ")}\n\nSubtasks created: ${subtasks.length}`,
       actions: [{ text: `Playbook "${pb.name}" activated with ${subtasks.length} subtasks`, by: "System", time: new Date().toLocaleTimeString() }],
       playbookId: pb.id, subtaskCount: subtasks.length,
+      ticketType: "master",
+      incidentId,
+      incidentTitle: incTitle || `Incident: ${pb.name}`,
+      childIds: childTickets.map((c) => c.id),
     });
+    addTickets(childTickets);
     addTasks(subtasks);
     addCase({ title: incTitle || `Incident: ${pb.name}`, date: new Date().toLocaleDateString(), status: "Open", type: "Incident", playbook: pb.id, ticketId: caseId });
     setAssignModal(null); setIncTitle(""); setIncSev("High"); setIncAssignee(""); setSel(null);

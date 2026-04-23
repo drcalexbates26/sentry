@@ -20,8 +20,14 @@ export function IncidentLog() {
       const masterTicket = tickets.find((t) => t.id === entry.masterTicketId);
       const childTickets = tickets.filter((t) => t.parentId === entry.masterTicketId);
       const incidentTasks = tasks.filter((t) => t.incidentId === entry.incidentId);
-      const incidentForensics = forensicLogs.filter((f) => f.incidentId?.includes(entry.title));
-      const incidentLessons = lessons.filter((l) => l.src?.includes(entry.title));
+      const incidentForensics = forensicLogs.filter((f) =>
+        f.incidentId === entry.incidentId ||
+        f.incidentId?.includes(entry.title) ||
+        f.incidentTitle?.includes(entry.title)
+      );
+      const incidentLessons = lessons.filter((l) =>
+        l.src?.includes(entry.title) || l.src === entry.incidentId
+      );
 
       // Phase completion
       const phaseCompletion = IR_PHASES.map((ph) => {

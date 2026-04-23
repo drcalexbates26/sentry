@@ -16,7 +16,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric } = useStore();
+  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog } = useStore();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -447,7 +447,15 @@ export function Commander() {
         <Button variant="secondary" onClick={() => setEditing(true)}>Edit Details</Button>
         <Button variant="danger" onClick={() => {
           if (confirm("Close incident?")) {
-            addCase({ title: inc.title, date: new Date().toLocaleDateString(), status: "Closed", cost: totalCost, members: inc.members.length });
+            const closedDate = new Date().toLocaleDateString();
+            addCase({ title: inc.title, date: closedDate, status: "Closed", cost: totalCost, members: inc.members.length });
+            // Update incident log entry to Closed
+            const logEntry = incidentLog.find((e) => e.title === inc.title && e.status === "Active");
+            if (logEntry) {
+              updateIncidentLogEntry(logEntry.incidentId, { status: "Closed", closedAt: new Date().toLocaleString() });
+              // Close the master ticket
+              updateTicket(logEntry.masterTicketId, { status: "Closed" });
+            }
             setActiveIncident(null);
             setEditing(true);
             setInc({ ...defaultInc });
