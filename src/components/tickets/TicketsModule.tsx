@@ -87,20 +87,60 @@ export function TicketsModule() {
         <div style={{ color: colors.textDim, fontSize: 10 }}>Tickets are created from IR phases, playbooks, or manually.</div>
       </Card>
     )}
-    {tickets.map((tk) => (
-        <Card key={tk.id} onClick={() => setSel(tk.id)} style={{ cursor: "pointer", marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ color: colors.white, fontSize: 12, fontWeight: 600 }}>{tk.title}</div>
-              <div style={{ color: colors.textDim, fontSize: 9, marginTop: 2 }}>{tk.created} · {tk.assignee || "Unassigned"}</div>
+    {/* Master tickets first, then standalone, then children grouped under parents */}
+    {tickets.filter((tk) => tk.ticketType === "master" || (!tk.ticketType && !tk.parentId)).map((tk) => {
+      const children = tickets.filter((c) => c.parentId === tk.id);
+      return (
+        <div key={tk.id}>
+          <Card onClick={() => setSel(tk.id)} style={{
+            cursor: "pointer", marginBottom: children.length > 0 ? 2 : 8,
+            borderLeft: tk.ticketType === "master" ? `3px solid ${colors.red}` : undefined,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: colors.textDim }}>TKT-{tk.id}</span>
+                  <span style={{ color: colors.white, fontSize: 12, fontWeight: 600 }}>{tk.title}</span>
+                </div>
+                <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+                  {tk.ticketType === "master" && <Badge color={colors.red}>Master</Badge>}
+                  {tk.incidentTitle && <Badge color={colors.orange}>{tk.incidentTitle}</Badge>}
+                  <span style={{ color: colors.textDim, fontSize: 9 }}>{tk.created} · {tk.assignee || "Unassigned"}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {children.length > 0 && <Badge color={colors.blue}>{children.length} sub</Badge>}
+                <Badge color={tk.severity === "Critical" ? colors.red : colors.orange}>{tk.severity}</Badge>
+                <Badge color={tk.status === "Closed" ? colors.green : colors.orange}>{tk.status}</Badge>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              <Badge color={tk.severity === "Critical" ? colors.red : colors.orange}>{tk.severity}</Badge>
-              <Badge color={tk.status === "Closed" ? colors.green : colors.orange}>{tk.status}</Badge>
-            </div>
-          </div>
-        </Card>
-      ))}
+          </Card>
+          {/* Child tickets indented */}
+          {children.map((child) => (
+            <Card key={child.id} onClick={() => setSel(child.id)} style={{
+              cursor: "pointer", marginBottom: 2, marginLeft: 24,
+              borderLeft: `2px solid ${colors.panelBorder}`,
+              padding: "10px 14px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 7, color: colors.textDim }}>TKT-{child.id}</span>
+                    <span style={{ color: colors.text, fontSize: 11 }}>{child.title}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 3, marginTop: 2 }}>
+                    {child.phase && <Badge color={colors.cyan}>{child.phase}</Badge>}
+                    <span style={{ color: colors.textDim, fontSize: 8 }}>{child.assignee || "Unassigned"}</span>
+                  </div>
+                </div>
+                <Badge color={child.status === "Closed" ? colors.green : colors.orange}>{child.status}</Badge>
+              </div>
+            </Card>
+          ))}
+          {children.length > 0 && <div style={{ height: 8 }} />}
+        </div>
+      );
+    })}
     </div>
   );
 }

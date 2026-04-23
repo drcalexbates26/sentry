@@ -10,6 +10,13 @@ export interface Ticket {
   created: string;
   playbookId?: string;
   subtaskCount?: number;
+  // Hierarchy
+  parentId?: number;
+  childIds?: number[];
+  // Incident linkage
+  incidentId?: string;
+  incidentTitle?: string;
+  ticketType?: "master" | "child" | "standalone";
 }
 
 export interface TicketAction {

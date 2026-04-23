@@ -4,15 +4,17 @@ import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
+import { IR_PHASES } from "@/data/ir-phases";
 import type { TaskStatus } from "@/types/task";
 
 const COLS: TaskStatus[] = ["Backlog", "In Progress", "In Review", "Done"];
 const priColors: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green };
+const IR_PHASE_OPTIONS = [{ value: "", label: "None" }, ...IR_PHASES.map((p) => ({ value: p.id, label: `${p.ico} ${p.n}` }))];
 
 export function TasksModule() {
-  const { tasks, addTask, updateTask } = useStore();
+  const { tasks, addTask, updateTask, activeIncident, addTaskWithTicket } = useStore();
   const [showNew, setShowNew] = useState(false);
-  const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "" });
+  const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "" });
   const [editId, setEditId] = useState<number | null>(null);
 
   return (
@@ -24,15 +26,42 @@ export function TasksModule() {
 
       {showNew && (
         <Card style={{ marginBottom: 12, borderColor: colors.teal + "44" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
             <Input label="Title" value={nf.title} onChange={(v) => setNf((p) => ({ ...p, title: v }))} />
             <Select label="Priority" value={nf.priority} onChange={(v) => setNf((p) => ({ ...p, priority: v }))} options={["Low", "Medium", "High", "Critical"]} />
+            <Select label="IR Phase" value={nf.irPhase} onChange={(v) => setNf((p) => ({ ...p, irPhase: v }))} options={IR_PHASE_OPTIONS} />
             <Input label="Assignee" value={nf.assignee} onChange={(v) => setNf((p) => ({ ...p, assignee: v }))} />
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <Button onClick={() => { if (nf.title) { addTask({ id: Date.now(), ...nf, priority: nf.priority as "Low" | "Medium" | "High" | "Critical", status: "Backlog", updates: [], created: new Date().toLocaleDateString(), source: "Manual" }); setShowNew(false); setNf({ title: "", priority: "Medium", assignee: "" }); } }}>Create</Button>
+            <Button onClick={() => {
+              if (!nf.title) return;
+              const task = {
+                id: Date.now(),
+                title: nf.title,
+                priority: nf.priority as "Low" | "Medium" | "High" | "Critical",
+                status: "Backlog" as const,
+                assignee: nf.assignee,
+                updates: [],
+                created: new Date().toLocaleDateString(),
+                source: "Manual",
+                irPhase: nf.irPhase || undefined,
+                incidentId: activeIncident ? `INC-active` : undefined,
+              };
+              if (activeIncident) {
+                addTaskWithTicket(task, activeIncident.title);
+              } else {
+                addTask(task);
+              }
+              setShowNew(false);
+              setNf({ title: "", priority: "Medium", assignee: "", irPhase: "" });
+            }}>Create{activeIncident ? " + Ticket" : ""}</Button>
             <Button variant="secondary" onClick={() => setShowNew(false)}>Cancel</Button>
           </div>
+          {activeIncident && (
+            <div style={{ color: colors.teal, fontSize: 9, marginTop: 6 }}>
+              Linked to active incident: {activeIncident.title} — a child ticket will be auto-created
+            </div>
+          )}
         </Card>
       )}
 
@@ -54,9 +83,11 @@ export function TasksModule() {
                 <div key={task.id} style={{ background: colors.panel, borderRadius: 7, padding: 10, marginBottom: 8, borderLeft: `3px solid ${priColors[task.priority] || colors.teal}`, cursor: "pointer" }}
                   onClick={() => setEditId(editId === task.id ? null : task.id)}>
                   <div style={{ color: colors.white, fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{task.title}</div>
-                  <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+                  <div style={{ display: "flex", gap: 3, marginBottom: 4, flexWrap: "wrap" }}>
                     <Badge color={priColors[task.priority]}>{task.priority}</Badge>
+                    {task.irPhase && <Badge color={colors.cyan}>{IR_PHASES.find((p) => p.id === task.irPhase)?.n || task.irPhase}</Badge>}
                     {task.assignee && <Badge color={colors.blue}>{task.assignee}</Badge>}
+                    {task.ticketId && <Badge color={colors.textDim}>TKT-{task.ticketId}</Badge>}
                   </div>
                   <div style={{ color: colors.textDim, fontSize: 9 }}>{task.source || "Manual"} · {task.created}</div>
                   {editId === task.id && (

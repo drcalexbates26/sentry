@@ -20,6 +20,16 @@ export interface MetricPoint {
   v: number;
 }
 
+export interface IncidentLogEntry {
+  incidentId: string;
+  title: string;
+  severity: string;
+  masterTicketId: number;
+  declaredAt: string;
+  closedAt?: string;
+  status: "Active" | "Closed";
+}
+
 interface AppState {
   // Navigation
   page: string;
@@ -57,16 +67,24 @@ interface AppState {
   activeIncident: Incident | null;
   setActiveIncident: (incident: Incident | null) => void;
 
+  // Incident Log
+  incidentLog: IncidentLogEntry[];
+  addIncidentLogEntry: (entry: IncidentLogEntry) => void;
+  updateIncidentLogEntry: (incidentId: string, updates: Partial<IncidentLogEntry>) => void;
+
   // Tickets
   tickets: Ticket[];
   addTicket: (ticket: Ticket) => void;
+  addTickets: (tickets: Ticket[]) => void;
   updateTicket: (id: number, updates: Partial<Ticket>) => void;
+  addChildTicket: (parentId: number, child: Ticket) => void;
 
   // Tasks
   tasks: TaskItem[];
   addTask: (task: TaskItem) => void;
   addTasks: (tasks: TaskItem[]) => void;
   updateTask: (id: number, updates: Partial<TaskItem>) => void;
+  addTaskWithTicket: (task: TaskItem, incidentTitle: string) => void;
 
   // Cases
   cases: PlaybookCase[];
@@ -93,8 +111,9 @@ interface AppState {
   policiesGen: string[];
   addPolicyGen: (id: string) => void;
 
-  // Metrics
+  // Metrics - real data only
   metrics: MetricPoint[];
+  recordIncidentMetric: (month: string) => void;
 }
 
 export interface IRContact {
@@ -159,9 +178,10 @@ const defaultStakeholders: StakeholderData = {
   keySystems: [],
 };
 
-const generateMetrics = (): MetricPoint[] =>
-  ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
-    .map((l) => ({ l, v: Math.floor(Math.random() * 6) + 1 }));
+// Empty metrics - only real incidents populate this
+const emptyMetrics = (): MetricPoint[] =>
+  ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    .map((l) => ({ l, v: 0 }));
 
 export const useStore = create<AppState>((set) => ({
   page: "dash",
@@ -190,16 +210,64 @@ export const useStore = create<AppState>((set) => ({
   activeIncident: null,
   setActiveIncident: (activeIncident) => set({ activeIncident }),
 
+  // Incident Log
+  incidentLog: [],
+  addIncidentLogEntry: (entry) => set((s) => ({ incidentLog: [entry, ...s.incidentLog] })),
+  updateIncidentLogEntry: (incidentId, updates) =>
+    set((s) => ({ incidentLog: s.incidentLog.map((e) => (e.incidentId === incidentId ? { ...e, ...updates } : e)) })),
+
+  // Tickets with hierarchy
   tickets: [],
   addTicket: (ticket) => set((s) => ({ tickets: [ticket, ...s.tickets] })),
+  addTickets: (newTickets) => set((s) => ({ tickets: [...newTickets, ...s.tickets] })),
   updateTicket: (id, updates) =>
     set((s) => ({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, ...updates } : t)) })),
+  addChildTicket: (parentId, child) =>
+    set((s) => ({
+      tickets: [
+        child,
+        ...s.tickets.map((t) =>
+          t.id === parentId
+            ? { ...t, childIds: [...(t.childIds || []), child.id] }
+            : t
+        ),
+      ],
+    })),
 
+  // Tasks - addTaskWithTicket creates a child ticket automatically
   tasks: [],
   addTask: (task) => set((s) => ({ tasks: [task, ...s.tasks] })),
   addTasks: (newTasks) => set((s) => ({ tasks: [...newTasks, ...s.tasks] })),
   updateTask: (id, updates) =>
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)) })),
+  addTaskWithTicket: (task, incidentTitle) =>
+    set((s) => {
+      const ticketId = task.id + 1000000;
+      const masterTicket = s.tickets.find((t) => t.ticketType === "master" && t.incidentTitle === incidentTitle);
+      const childTicket: Ticket = {
+        id: ticketId,
+        title: task.title,
+        severity: task.priority,
+        status: "Open",
+        phase: task.irPhase || "",
+        assignee: task.assignee,
+        details: `Auto-generated from task. Source: ${task.source}`,
+        actions: [{ text: "Ticket created from task", by: "System", time: new Date().toLocaleTimeString() }],
+        created: task.created,
+        parentId: masterTicket?.id,
+        incidentId: task.incidentId,
+        incidentTitle,
+        ticketType: "child",
+      };
+      const taskWithTicket = { ...task, ticketId };
+      const updatedTickets = masterTicket
+        ? [childTicket, ...s.tickets.map((t) => t.id === masterTicket.id ? { ...t, childIds: [...(t.childIds || []), ticketId] } : t)]
+        : [childTicket, ...s.tickets];
+      return {
+        tasks: [taskWithTicket, ...s.tasks],
+        tickets: updatedTickets,
+      };
+    }),
 
   cases: [],
   addCase: (c) => set((s) => ({ cases: [c, ...s.cases] })),
@@ -221,5 +289,10 @@ export const useStore = create<AppState>((set) => ({
   policiesGen: [],
   addPolicyGen: (id) => set((s) => ({ policiesGen: [...new Set([...s.policiesGen, id])] })),
 
-  metrics: generateMetrics(),
+  // Real metrics only
+  metrics: emptyMetrics(),
+  recordIncidentMetric: (month) =>
+    set((s) => ({
+      metrics: s.metrics.map((m) => (m.l === month ? { ...m, v: m.v + 1 } : m)),
+    })),
 }));

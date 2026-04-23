@@ -165,15 +165,24 @@ export function Dashboard() {
 
         <Card>
           <div style={sh}><span style={dot(colors.orange)} />Incident Trend — 12 Months</div>
-          <MiniChart data={metrics} />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-            <div style={{ display: "flex", gap: 10 }}>
-              <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.teal }}>Normal</span></span>
-              <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.orange }}>Elevated</span></span>
-              <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.red }}>Critical</span></span>
+          {metrics.some((m) => m.v > 0) ? (
+            <>
+              <MiniChart data={metrics} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.teal }}>Normal</span></span>
+                  <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.orange }}>Elevated</span></span>
+                  <span style={{ fontSize: 8, color: colors.textMuted }}>■ <span style={{ color: colors.red }}>Critical</span></span>
+                </div>
+                <span style={{ fontSize: 9, color: colors.textDim }}>Total: {metrics.reduce((a, x) => a + x.v, 0)}</span>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <div style={{ color: colors.green, fontSize: 11, fontWeight: 600, marginBottom: 4 }}>No Incidents Recorded</div>
+              <div style={{ color: colors.textDim, fontSize: 10 }}>Incident data will appear here as incidents are declared and tracked.</div>
             </div>
-            <span style={{ fontSize: 9, color: colors.textDim }}>Total: {metrics.reduce((a, x) => a + x.v, 0)}</span>
-          </div>
+          )}
         </Card>
       </div>
 

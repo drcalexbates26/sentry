@@ -7,6 +7,7 @@ import { Onboarding } from "@/components/onboarding/Onboarding";
 import { AssessmentModule } from "@/components/assessment/AssessmentModule";
 import { IRPlanner } from "@/components/irplanner/IRPlanner";
 import { Commander } from "@/components/commander/Commander";
+import { IncidentLog } from "@/components/commander/IncidentLog";
 import { PlaybooksModule } from "@/components/playbooks/PlaybooksModule";
 import { TabletopModule } from "@/components/tabletop/TabletopModule";
 import { TicketsModule } from "@/components/tickets/TicketsModule";
@@ -24,6 +25,7 @@ const modules: Record<string, React.ComponentType> = {
   assess: AssessmentModule,
   irplan: IRPlanner,
   commander: Commander,
+  incidentlog: IncidentLog,
   playbooks: PlaybooksModule,
   tabletop: TabletopModule,
   tickets: TicketsModule,

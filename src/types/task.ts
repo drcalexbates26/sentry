@@ -10,6 +10,9 @@ export interface TaskItem {
   source: string;
   updates: TaskUpdate[];
   created: string;
+  irPhase?: string;
+  incidentId?: string;
+  ticketId?: number;
 }
 
 export interface TaskUpdate {

@@ -16,7 +16,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addCase } = useStore();
+  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric } = useStore();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -89,7 +89,41 @@ export function Commander() {
               <Input label="Enforced By" value={inc.privilegeEnforcedBy || ""} onChange={(v) => setInc((p) => ({ ...p, privilegeEnforcedBy: v, privilegeEnforcedAt: new Date().toLocaleString() }))} placeholder="Legal counsel name" style={{ marginBottom: 0, flex: 1 }} />
             )}
           </div>
-          <Button style={{ marginTop: 12 }} onClick={() => { save(inc); setEditing(false); addTL("Incident declared: " + inc.title); }} disabled={!inc.title || !inc.startTime}>
+          <Button style={{ marginTop: 12 }} onClick={() => {
+            const masterTicketId = Date.now();
+            // Create master ticket
+            addTicket({
+              id: masterTicketId,
+              title: `[INCIDENT] ${inc.title}`,
+              severity: inc.severity,
+              status: "Open",
+              phase: "Incident Declared",
+              assignee: "",
+              details: `Master incident ticket for: ${inc.title}\nSeverity: ${inc.severity}\nDeclared: ${new Date(inc.startTime).toLocaleString()}\nIOCs: ${inc.iocs.join("; ") || "Under investigation"}\nPrivacy Concern: ${inc.privacyConcern ? "Yes" : "No"}\nAttorney-Client Privilege: ${inc.attorneyPrivilege ? "Yes" : "No"}`,
+              actions: [{ text: "Incident declared — master ticket created", by: "System", time: new Date().toLocaleTimeString() }],
+              created: new Date().toLocaleDateString(),
+              ticketType: "master",
+              incidentId: `INC-${masterTicketId}`,
+              incidentTitle: inc.title,
+              childIds: [],
+            });
+            // Create incident log entry
+            addIncidentLogEntry({
+              incidentId: `INC-${masterTicketId}`,
+              title: inc.title,
+              severity: inc.severity,
+              masterTicketId,
+              declaredAt: new Date().toLocaleString(),
+              status: "Active",
+            });
+            // Record in metrics
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            recordIncidentMetric(monthNames[new Date().getMonth()]);
+            // Save and activate
+            save(inc);
+            setEditing(false);
+            addTL("Incident declared: " + inc.title);
+          }} disabled={!inc.title || !inc.startTime}>
             Activate Command →
           </Button>
         </Card>
