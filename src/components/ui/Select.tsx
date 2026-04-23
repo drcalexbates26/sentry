@@ -2,11 +2,16 @@
 
 import { colors } from "@/lib/tokens";
 
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
 interface SelectProps {
   label?: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: (string | SelectOption)[];
 }
 
 export function Select({ label, value, onChange, options }: SelectProps) {
@@ -43,11 +48,15 @@ export function Select({ label, value, onChange, options }: SelectProps) {
         }}
       >
         <option value="">Select...</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
+        {options.map((o) => {
+          const val = typeof o === "string" ? o : o.value;
+          const lbl = typeof o === "string" ? o : o.label;
+          return (
+            <option key={val} value={val}>
+              {lbl}
+            </option>
+          );
+        })}
       </select>
     </div>
   );

@@ -79,6 +79,7 @@ interface AppState {
   // Forensics
   forensicLogs: ForensicLogEntry[];
   addForensicLog: (log: ForensicLogEntry) => void;
+  updateForensicLog: (id: number, updates: Partial<ForensicLogEntry>) => void;
 
   // Lessons
   lessons: Lesson[];
@@ -114,15 +115,28 @@ export interface TabletopExercise {
   notes: string;
 }
 
+export interface EvidenceFile {
+  id: number;
+  name: string;
+  size: number;
+  type: string;
+  sha256: string;
+  uploadedAt: string;
+}
+
 export interface ForensicLogEntry {
   id: number;
   title: string;
-  classification: string;
-  caseRef: string;
+  classification: "Internal" | "Confidential" | "Restricted" | "Privileged & Confidential";
+  incidentId: string;
+  incidentTitle: string;
   description: string;
-  encKey?: string;
+  chainOfCustody: string;
+  createdBy: string;
+  createdAt: string;
+  accessList: string[];
+  files: EvidenceFile[];
   locked: boolean;
-  created: string;
 }
 
 const defaultOrg: Organization = {
@@ -195,6 +209,8 @@ export const useStore = create<AppState>((set) => ({
 
   forensicLogs: [],
   addForensicLog: (log) => set((s) => ({ forensicLogs: [log, ...s.forensicLogs] })),
+  updateForensicLog: (id, updates) =>
+    set((s) => ({ forensicLogs: s.forensicLogs.map((l) => (l.id === id ? { ...l, ...updates } : l)) })),
 
   lessons: [],
   addLesson: (lesson) => set((s) => ({ lessons: [lesson, ...s.lessons] })),
