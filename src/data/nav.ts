@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Rocket, Shield, FileText, Swords, BookOpen,
-  Target, TicketCheck, ListTodo, Microscope, Users, FileKey,
+  Target, Crosshair, TicketCheck, ListTodo, Microscope, Users, FileKey,
   Radio, Lock, Puzzle, ClipboardList,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "incidentlog", label: "Incident Log", icon: ClipboardList },
   { id: "playbooks", label: "Playbooks", icon: BookOpen },
   { id: "tabletop", label: "Tabletop", icon: Target },
+  { id: "pentesting", label: "Pen Testing", icon: Crosshair },
   { id: "tickets", label: "Tickets", icon: TicketCheck },
   { id: "tasks", label: "Tasks", icon: ListTodo },
   { id: "forensics", label: "Forensics", icon: Microscope },

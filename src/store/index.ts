@@ -106,6 +106,15 @@ interface AppState {
   // Tabletop Exercises
   tabletopExercises: TabletopExercise[];
   addTabletopExercise: (exercise: TabletopExercise) => void;
+  updateTabletopExercise: (id: number, updates: Partial<TabletopExercise>) => void;
+
+  // Pen Test Requests
+  penTestRequests: PenTestRequest[];
+  addPenTestRequest: (req: PenTestRequest) => void;
+
+  // Notification Log
+  notificationLog: NotificationEntry[];
+  addNotification: (entry: NotificationEntry) => void;
 
   // Policies
   policiesGen: string[];
@@ -156,6 +165,28 @@ export interface ForensicLogEntry {
   accessList: string[];
   files: EvidenceFile[];
   locked: boolean;
+}
+
+export interface PenTestRequest {
+  id: number;
+  testType: string;
+  orgName: string;
+  contactEmail: string;
+  status: "Submitted" | "In Review" | "Scheduled" | "Complete";
+  submittedAt: string;
+  formData: Record<string, string>;
+  notes: string;
+}
+
+export interface NotificationEntry {
+  id: number;
+  event: string;
+  recipients: string[];
+  subject: string;
+  body: string;
+  timestamp: string;
+  privileged: boolean;
+  module: string;
 }
 
 const defaultOrg: Organization = {
@@ -285,6 +316,14 @@ export const useStore = create<AppState>((set) => ({
 
   tabletopExercises: [],
   addTabletopExercise: (exercise) => set((s) => ({ tabletopExercises: [exercise, ...s.tabletopExercises] })),
+  updateTabletopExercise: (id, updates) =>
+    set((s) => ({ tabletopExercises: s.tabletopExercises.map((t) => (t.id === id ? { ...t, ...updates } : t)) })),
+
+  penTestRequests: [],
+  addPenTestRequest: (req) => set((s) => ({ penTestRequests: [req, ...s.penTestRequests] })),
+
+  notificationLog: [],
+  addNotification: (entry) => set((s) => ({ notificationLog: [entry, ...s.notificationLog] })),
 
   policiesGen: [],
   addPolicyGen: (id) => set((s) => ({ policiesGen: [...new Set([...s.policiesGen, id])] })),

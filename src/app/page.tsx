@@ -10,6 +10,7 @@ import { Commander } from "@/components/commander/Commander";
 import { IncidentLog } from "@/components/commander/IncidentLog";
 import { PlaybooksModule } from "@/components/playbooks/PlaybooksModule";
 import { TabletopModule } from "@/components/tabletop/TabletopModule";
+import { PenTestingModule } from "@/components/pentesting/PenTestingModule";
 import { TicketsModule } from "@/components/tickets/TicketsModule";
 import { TasksModule } from "@/components/tasks/TasksModule";
 import { ForensicsModule } from "@/components/forensics/ForensicsModule";
@@ -28,6 +29,7 @@ const modules: Record<string, React.ComponentType> = {
   incidentlog: IncidentLog,
   playbooks: PlaybooksModule,
   tabletop: TabletopModule,
+  pentesting: PenTestingModule,
   tickets: TicketsModule,
   tasks: TasksModule,
   forensics: ForensicsModule,

@@ -6,6 +6,7 @@ import { useStore } from "@/store";
 import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import type { Incident, Deadline } from "@/types/incident";
+import { buildNotification, copyNotification } from "@/lib/notifications";
 
 const defaultInc: Incident = {
   title: "", severity: "High", startTime: "", members: [], phaseStatus: {}, findings: [], summaries: [],
@@ -16,7 +17,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog } = useStore();
+  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification } = useStore();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -119,6 +120,19 @@ export function Commander() {
             // Record in metrics
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             recordIncidentMetric(monthNames[new Date().getMonth()]);
+            // Send notification
+            const notif = buildNotification("incident.declared", {
+              what: `Incident "${inc.title}" has been declared at severity ${inc.severity}`,
+              who: "Incident Commander",
+              when: new Date().toLocaleString(),
+              where: "Commander Module",
+              why: `${inc.severity} severity incident requiring immediate response coordination`,
+              actionRequired: "Review incident details and join the response coordination in Commander.",
+              incidentTitle: inc.title,
+              privileged: inc.attorneyPrivilege,
+            }, stakeholders);
+            copyNotification(notif);
+            addNotification({ id: Date.now(), event: "incident.declared", recipients: notif.recipients, subject: notif.subject, body: notif.body, timestamp: new Date().toLocaleString(), privileged: notif.privileged, module: "Commander" });
             // Save and activate
             save(inc);
             setEditing(false);
@@ -448,6 +462,18 @@ export function Commander() {
         <Button variant="danger" onClick={() => {
           if (confirm("Close incident?")) {
             const closedDate = new Date().toLocaleDateString();
+            // Send close notification
+            const closeNotif = buildNotification("incident.closed", {
+              what: `Incident "${inc.title}" has been closed`,
+              who: "Incident Commander",
+              when: new Date().toLocaleString(),
+              where: "Commander Module",
+              why: `Incident response complete. Total cost: $${totalCost.toLocaleString()}. Team: ${inc.members.length} responders.`,
+              incidentTitle: inc.title,
+              privileged: inc.attorneyPrivilege,
+            }, stakeholders);
+            copyNotification(closeNotif);
+            addNotification({ id: Date.now(), event: "incident.closed", recipients: closeNotif.recipients, subject: closeNotif.subject, body: closeNotif.body, timestamp: new Date().toLocaleString(), privileged: closeNotif.privileged, module: "Commander" });
             addCase({ title: inc.title, date: closedDate, status: "Closed", cost: totalCost, members: inc.members.length });
             // Update incident log entry to Closed
             const logEntry = incidentLog.find((e) => e.title === inc.title && e.status === "Active");
