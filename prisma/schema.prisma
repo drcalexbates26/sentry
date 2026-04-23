@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  industry     String?
+  size         String?
+  website      String?
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  techStack    Json?
+  compliance   String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assessments  Assessment[]
+  incidents    Incident[]
+  tickets      Ticket[]
+  tasks        Task[]
+  stakeholders Stakeholder[]
+  policies     Policy[]
+  tabletops    Tabletop[]
+  teamMembers  TeamMember[]
+  forensicLogs ForensicLog[]
+}
+
+model TeamMember {
+  id     String  @id @default(cuid())
+  name   String
+  email  String
+  role   String
+  active Boolean @default(true)
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id])
+}
+
+model Assessment {
+  id        String   @id @default(cuid())
+  framework String
+  score     Int
+  answers   Json
+  grpScores Json
+  catScores Json?
+  warnings  Json
+  recs      Json
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Incident {
+  id               String    @id @default(cuid())
+  title            String
+  severity         String
+  status           String    @default("Active")
+  startTime        DateTime
+  endTime          DateTime?
+  internalCostRate Float     @default(150)
+  iocs             String[]
+  affectedUsers    String[]
+  affectedAssets   String[]
+  affectedRegions  String[]
+  privacyConcern   Boolean   @default(false)
+  attorneyPrivilege Boolean  @default(false)
+  privilegeBy      String?
+  privilegeAt      DateTime?
+  phaseStatus      Json
+  findings         Json
+  timeline         Json
+  workstreams      Json
+  escalation       Json
+  expenses         Json
+  summaries        Json
+  notifications    Json
+  members          Json
+
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  title     String
+  severity  String
+  status    String   @default("Open")
+  phase     String?
+  assignee  String?
+  details   String?  @db.Text
+  actions   Json
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Task {
+  id       String   @id @default(cuid())
+  title    String
+  priority String
+  status   String   @default("Backlog")
+  assignee String?
+  source   String?
+  updates  Json
+  orgId    String
+  org      Organization @relation(fields: [orgId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Stakeholder {
+  id               String  @id @default(cuid())
+  groupKey         String
+  firstName        String
+  lastName         String
+  title            String?
+  responsibilities String? @db.Text
+  email            String?
+  cell             String?
+  orgId            String
+  org              Organization @relation(fields: [orgId], references: [id])
+  createdAt        DateTime @default(now())
+}
+
+model KeySystem {
+  id          String  @id @default(cuid())
+  systemName  String
+  category    String
+  criticality String
+  owner       String?
+  ownerEmail  String?
+  ownerCell   String?
+  notes       String? @db.Text
+  orgId       String
+  createdAt   DateTime @default(now())
+}
+
+model Policy {
+  id         String   @id @default(cuid())
+  templateId String
+  title      String
+  version    String   @default("1.0")
+  content    String   @db.Text
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Tabletop {
+  id             String   @id @default(cuid())
+  title          String
+  scenario       String
+  date           DateTime
+  facilitator    String?
+  participants   String[]
+  status         String   @default("Scheduled")
+  rating         Int?
+  notes          String?  @db.Text
+  findings       Json
+  lessonsLearned Json
+  actionItems    Json
+  feedback       Json
+  orgId          String
+  org            Organization @relation(fields: [orgId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ForensicLog {
+  id             String   @id @default(cuid())
+  title          String
+  classification String
+  caseRef        String?
+  description    String?  @db.Text
+  encrypted      Boolean  @default(false)
+  orgId          String
+  org            Organization @relation(fields: [orgId], references: [id])
+  createdAt      DateTime @default(now())
+}
+
+model Lesson {
+  id        String   @id @default(cuid())
+  text      String
+  source    String?
+  orgId     String
+  createdAt DateTime @default(now())
+}
