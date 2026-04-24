@@ -50,10 +50,10 @@ export default function Home() {
   const Module = modules[page] || Dashboard;
 
   return (
-    <ModalProvider>
-      <Shell>
+    <Shell>
+      <ModalProvider>
         <Module />
-      </Shell>
-    </ModalProvider>
+      </ModalProvider>
+    </Shell>
   );
 }
