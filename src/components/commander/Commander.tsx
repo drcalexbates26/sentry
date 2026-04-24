@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
+import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import { PLAYBOOKS } from "@/data/playbooks";
 import type { Incident, Deadline } from "@/types/incident";
@@ -21,6 +21,7 @@ const defaultInc: Incident = {
 
 export function Commander() {
   const { activeIncident, setActiveIncident, addCase, addTicket, addTickets, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification, tasks, addTasks } = useStore();
+  const modal = useModal();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -412,7 +413,7 @@ export function Commander() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Team</div>
-              <Button size="sm" onClick={() => { const n = prompt("Name:"); const r = prompt("Role:"); if (n) { setInc((p) => ({ ...p, members: [...p.members, { name: n, role: r || "Responder", hours: 0 }] })); addTL(`${n} joined`); } }}>+ Add</Button>
+              <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Team Member", [{ key: "name", label: "Name", required: true }, { key: "role", label: "Role", placeholder: "Responder", defaultValue: "Responder" }]); if (r) { setInc((p) => ({ ...p, members: [...p.members, { name: r.name, role: r.role || "Responder", hours: 0 }] })); addTL(`${r.name} joined`); } }}>+ Add</Button>
             </div>
             {inc.members.map((m, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
@@ -432,7 +433,7 @@ export function Commander() {
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Incident Timeline</div>
-            <Button size="sm" onClick={() => { const e = prompt("Event:"); if (e) addTL(e); }}>+ Event</Button>
+            <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Timeline Event", [{ key: "event", label: "Event Description", required: true }]); if (r) addTL(r.event); }}>+ Event</Button>
           </div>
           {inc.timeline.length === 0 ? <p style={{ color: colors.textDim, fontSize: 10 }}>Events appear as the incident progresses.</p>
             : inc.timeline.map((t, i) => (
@@ -510,7 +511,7 @@ export function Commander() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>External Expenses</div>
-              <Button size="sm" onClick={() => { const v = prompt("Vendor:"); const d = prompt("Description:"); const a = prompt("Amount ($):"); if (v && a) { setInc((p) => ({ ...p, expenses: [...p.expenses, { vendor: v, description: d || "", amount: parseFloat(a) || 0, date: new Date().toLocaleDateString() }] })); addTL(`Expense: ${v} $${a}`); } }}>+ Add</Button>
+              <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Expense", [{ key: "vendor", label: "Vendor", required: true, placeholder: "e.g., Dark Rock Cybersecurity" }, { key: "description", label: "Description", placeholder: "Forensics retainer" }, { key: "amount", label: "Amount ($)", type: "number", required: true }]); if (r) { setInc((p) => ({ ...p, expenses: [...p.expenses, { vendor: r.vendor, description: r.description || "", amount: parseFloat(r.amount) || 0, date: new Date().toLocaleDateString() }] })); addTL(`Expense: ${r.vendor} $${r.amount}`); } }}>+ Add</Button>
             </div>
             {inc.expenses.length === 0 ? <p style={{ color: colors.textDim, fontSize: 9 }}>No external expenses. Add legal, forensics, PR costs.</p>
               : inc.expenses.map((e, i) => (
@@ -537,7 +538,7 @@ export function Commander() {
                     <div style={{ color: colors.white, fontSize: 11, fontWeight: 700 }}>{ws.r}</div>
                     <div style={{ display: "flex", gap: 4, marginTop: 2 }}><Badge color={pct >= 100 ? colors.green : colors.teal}>{pct}%</Badge><Badge color={colors.textDim}>{dn}/{d.tasks.length}</Badge></div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => { const t = prompt(`Task for ${ws.r}:`); if (t) setInc((p) => ({ ...p, workstreams: { ...p.workstreams, [ws.k]: { ...d, tasks: [...d.tasks, { text: t, done: false, ts: new Date().toLocaleString() }] } } })); }}>+ Task</Button>
+                  <Button size="sm" variant="outline" onClick={async () => { const r = await modal.showPrompt(`Add Task — ${ws.r}`, [{ key: "task", label: "Task Description", required: true }]); if (r) setInc((p) => ({ ...p, workstreams: { ...p.workstreams, [ws.k]: { ...d, tasks: [...d.tasks, { text: r.task, done: false, ts: new Date().toLocaleString() }] } } })); }}>+ Task</Button>
                 </div>
                 {d.tasks.map((t, i) => (
                   <Checkbox key={i} label={t.text} checked={t.done} onChange={(v) => {
@@ -559,7 +560,7 @@ export function Commander() {
               <Card key={n.k} style={{ padding: 10, cursor: "pointer" }} onClick={() => {
                 addTL(`Notification: ${n.l}`);
                 setInc((p) => ({ ...p, notifications: [...p.notifications, { type: n.l, time: new Date().toLocaleString() }] }));
-                alert(`${n.l} notification generated.`);
+                modal.showAlert("Notification Generated", `${n.l} notification has been generated and copied to clipboard.`);
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{ fontSize: 14 }}>{n.i}</span>
@@ -592,7 +593,7 @@ export function Commander() {
             <Card key={s.id} style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ color: colors.textMuted, fontSize: 8 }}>{s.timestamp}</span>
-                <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard?.writeText(s.text); alert("Copied."); }}>Copy</Button>
+                <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard?.writeText(s.text); modal.showAlert("Copied", "Summary copied to clipboard."); }}>Copy</Button>
               </div>
               <pre style={{ background: colors.obsidianM, borderRadius: 5, padding: 10, color: colors.text, fontSize: 8, lineHeight: 1.6, whiteSpace: "pre-wrap", fontFamily: "var(--font-mono, monospace)", maxHeight: 200, overflow: "auto", margin: 0 }}>{s.text}</pre>
             </Card>
@@ -602,10 +603,10 @@ export function Commander() {
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 6, marginTop: 14, flexWrap: "wrap" }}>
-        <Button variant="outline" onClick={() => { save(); alert("Saved."); }}>Save</Button>
+        <Button variant="outline" onClick={() => { save(); modal.showAlert("Saved", "Incident data has been saved."); }}>Save</Button>
         <Button variant="secondary" onClick={() => setEditing(true)}>Edit Details</Button>
         <Button variant="danger" onClick={() => {
-          if (confirm("Close incident?")) {
+          modal.showConfirm("Close Incident", "Are you sure you want to close this incident? A final summary will be generated.", "danger").then((confirmed) => { if (!confirmed) return;
             const closedDate = new Date().toLocaleDateString();
             // Send close notification
             const closeNotif = buildNotification("incident.closed", {
@@ -630,7 +631,7 @@ export function Commander() {
             setActiveIncident(null);
             setEditing(true);
             setInc({ ...defaultInc });
-          }
+          });
         }}>Close Incident</Button>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, ProgressBar, ScoreGauge, MiniChart } from "@/components/ui";
+import { Badge, Button, Card, ProgressBar, ScoreGauge, MiniChart, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import { PLAYBOOKS } from "@/data/playbooks";
 
@@ -15,6 +15,7 @@ export function Dashboard() {
     policiesGen, forensicLogs, lessons, irData, onboardDone, org, tech, comp,
     metrics, setPage, addLesson, threatIntelItems,
   } = useStore();
+  const modal = useModal();
 
   const lastAss = assessments.length ? assessments[assessments.length - 1] : null;
   const openTasks = tasks.filter((t) => t.status !== "Done").length;
@@ -286,9 +287,9 @@ export function Dashboard() {
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", ...sh }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={dot(colors.yellow)} />Lessons Learned</div>
-            <Button variant="ghost" size="sm" onClick={() => {
-              const t = prompt("Add lesson learned:");
-              if (t) addLesson({ text: t, date: new Date().toLocaleDateString(), src: "Manual" });
+            <Button variant="ghost" size="sm" onClick={async () => {
+              const r = await modal.showPrompt("Add Lesson Learned", [{ key: "lesson", label: "Lesson", required: true, type: "textarea" }]);
+              if (r) addLesson({ text: r.lesson, date: new Date().toLocaleDateString(), src: "Manual" });
             }}>+ Add</Button>
           </div>
           {lessons.length === 0

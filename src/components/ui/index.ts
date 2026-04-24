@@ -8,3 +8,4 @@ export { ProgressBar } from "./ProgressBar";
 export { ScoreGauge } from "./ScoreGauge";
 export { SectionHeader } from "./SectionHeader";
 export { Select } from "./Select";
+export { ModalProvider, useModal } from "./Modal";

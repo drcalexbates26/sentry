@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 
 interface AARObjective {
   id: string; title: string; description: string;
@@ -42,6 +42,7 @@ const emptyAAR = (): AARData => ({
 
 export function TabletopModule() {
   const { tabletopExercises, addTabletopExercise, updateTabletopExercise, addTask, addLesson } = useStore();
+  const modal = useModal();
   const [showNew, setShowNew] = useState(false);
   const [selId, setSelId] = useState<number | null>(null);
   const [nf, setNf] = useState({ title: "", scenario: "", date: "", facilitator: "", participants: "", notes: "" });
@@ -153,9 +154,9 @@ export function TabletopModule() {
               <div key={key} style={{ background: colors.obsidianM, borderRadius: 6, padding: 12, borderTop: `2px solid ${color}` }}>
                 <div style={{ color, fontSize: 10, fontWeight: 700, marginBottom: 8 }}>{label}</div>
                 {(aar.threatProfile[key] || []).map((t, i) => <Badge key={i} color={color} className="mr-1 mb-1">{t}</Badge>)}
-                {isEditing && <Button variant="ghost" size="sm" style={{ marginTop: 4 }} onClick={() => {
-                  const t = prompt(`Add ${label} threat:`);
-                  if (t) updateAAR(selId, { threatProfile: { ...aar.threatProfile, [key]: [...aar.threatProfile[key], t] } });
+                {isEditing && <Button variant="ghost" size="sm" style={{ marginTop: 4 }} onClick={async () => {
+                  const r = await modal.showPrompt(`Add ${label} Threat`, [{ key: "threat", label: `${label} Threat`, required: true, placeholder: "e.g., Unauthorized Access" }]);
+                  if (r) updateAAR(selId, { threatProfile: { ...aar.threatProfile, [key]: [...aar.threatProfile[key], r.threat] } });
                 }}>+ Add</Button>}
                 {(aar.threatProfile[key] || []).length === 0 && !isEditing && <span style={{ color: colors.textDim, fontSize: 9 }}>None defined</span>}
               </div>
@@ -262,7 +263,7 @@ export function TabletopModule() {
         <Card style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Strengths Identified</div>
-            {isEditing && <Button variant="ghost" size="sm" onClick={() => { const s = prompt("Strength:"); if (s) updateAAR(selId, { strengths: [...aar.strengths, s] }); }}>+ Add</Button>}
+            {isEditing && <Button variant="ghost" size="sm" onClick={async () => { const r = await modal.showPrompt("Add Strength", [{ key: "strength", label: "Strength Identified", required: true }]); if (r) updateAAR(selId, { strengths: [...aar.strengths, r.strength] }); }}>+ Add</Button>}
           </div>
           {aar.strengths.length === 0
             ? <div style={{ color: colors.textDim, fontSize: 10 }}>No strengths documented.</div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import type { TaskStatus } from "@/types/task";
 
@@ -13,6 +13,7 @@ const IR_PHASE_OPTIONS = [{ value: "", label: "None" }, ...IR_PHASES.map((p) => 
 
 export function TasksModule() {
   const { tasks, addTask, updateTask, activeIncident, addTaskWithTicket } = useStore();
+  const modal = useModal();
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "" });
   const [editId, setEditId] = useState<number | null>(null);
@@ -95,8 +96,9 @@ export function TasksModule() {
                       {(task.updates || []).map((up, i) => (
                         <div key={i} style={{ fontSize: 9, color: colors.textMuted, padding: "2px 0" }}>[{up.date}] {up.text}</div>
                       ))}
-                      <Button variant="ghost" size="sm" style={{ marginTop: 4 }} onClick={() => {
-                        const t = prompt("Update:");
+                      <Button variant="ghost" size="sm" style={{ marginTop: 4 }} onClick={async () => {
+                        const r = await modal.showPrompt("Add Task Update", [{ key: "update", label: "Update", required: true, type: "textarea" }]);
+                        const t = r?.update;
                         if (t) updateTask(task.id, { updates: [...(task.updates || []), { text: t, date: new Date().toLocaleDateString() }] });
                       }}>+ Update</Button>
                       <div style={{ display: "flex", gap: 3, marginTop: 6, flexWrap: "wrap" }}>

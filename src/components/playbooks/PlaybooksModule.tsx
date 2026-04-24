@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 import { PLAYBOOKS } from "@/data/playbooks";
 import { IR_PHASES } from "@/data/ir-phases";
 
 export function PlaybooksModule() {
   const { cases, addCase, addTicket, addTickets, addTasks } = useStore();
+  const modal = useModal();
   const [sel, setSel] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");
   const [pbChecks, setPbChecks] = useState<Record<string, boolean>>({});
@@ -95,7 +96,7 @@ export function PlaybooksModule() {
     addTasks(subtasks);
     addCase({ title: incTitle || `Incident: ${pb.name}`, date: new Date().toLocaleDateString(), status: "Open", type: "Incident", playbook: pb.id, ticketId: caseId });
     setAssignModal(null); setIncTitle(""); setIncSev("High"); setIncAssignee(""); setSel(null);
-    alert(`Incident created with ${subtasks.length} subtasks.`);
+    modal.showAlert("Incident Created", `Incident created with ${subtasks.length} subtasks in the Tasks board and a master ticket.`);
   };
 
   if (sel) {

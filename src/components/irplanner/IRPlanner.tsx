@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Checkbox, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Checkbox, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES, SEV_LEVELS } from "@/data/ir-phases";
 
 export function IRPlanner() {
   const { irData, updateIRData, addTicket, addLesson, addTask, setPage } = useStore();
+  const modal = useModal();
   const [tab, setTab] = useState("lifecycle");
 
   return (
@@ -36,11 +37,11 @@ export function IRPlanner() {
             ))}
             <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
               <Button variant="outline" size="sm" onClick={() => addTicket({ id: Date.now(), title: `${ph.n} Phase Ticket`, status: "Open", severity: "Medium", phase: ph.n, assignee: "", created: new Date().toLocaleDateString(), details: "", actions: [] })}>Generate Ticket</Button>
-              <Button variant="ghost" size="sm" onClick={() => {
-                const l = prompt("Lesson learned:");
-                if (l) {
-                  addLesson({ text: l, date: new Date().toLocaleDateString(), src: ph.n });
-                  addTask({ id: Date.now(), title: l.substring(0, 80), priority: "Medium", status: "Backlog", assignee: "", updates: [], created: new Date().toLocaleDateString(), source: `Lesson: ${ph.n}` });
+              <Button variant="ghost" size="sm" onClick={async () => {
+                const r = await modal.showPrompt("Lesson Learned → Task", [{ key: "lesson", label: "Lesson Learned", required: true, type: "textarea" }], `Capture a lesson from the ${ph.n} phase. This will also create a remediation task.`);
+                if (r) {
+                  addLesson({ text: r.lesson, date: new Date().toLocaleDateString(), src: ph.n });
+                  addTask({ id: Date.now(), title: r.lesson.substring(0, 80), priority: "Medium", status: "Backlog", assignee: "", updates: [], created: new Date().toLocaleDateString(), source: `Lesson: ${ph.n}` });
                 }
               }}>+ Lesson → Task</Button>
             </div>
@@ -86,9 +87,9 @@ export function IRPlanner() {
                   }))}>✕</Button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" style={{ marginTop: 6 }} onClick={() => {
-                const n = prompt("Name:"); const r = prompt("Role:"); const e = prompt("Email:");
-                if (n) updateIRData((p) => ({ ...p, contacts: { ...p.contacts, [team]: [...p.contacts[team], { name: n, role: r || "", email: e || "" }] } }));
+              <Button variant="outline" size="sm" style={{ marginTop: 6 }} onClick={async () => {
+                const r = await modal.showPrompt("Add Contact", [{ key: "name", label: "Name", required: true }, { key: "role", label: "Role" }, { key: "email", label: "Email" }]);
+                if (r) updateIRData((p) => ({ ...p, contacts: { ...p.contacts, [team]: [...p.contacts[team], { name: r.name, role: r.role || "", email: r.email || "" }] } }));
               }}>+ Add</Button>
             </Card>
           ))}

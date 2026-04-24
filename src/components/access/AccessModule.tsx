@@ -2,11 +2,12 @@
 
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, SectionHeader, useModal } from "@/components/ui";
 import { ROLES } from "@/data/tech-options";
 
 export function AccessModule() {
   const { team, addTeamMember } = useStore();
+  const modal = useModal();
 
   return (
     <div>
@@ -14,11 +15,13 @@ export function AccessModule() {
       <Card style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
           <h3 style={{ color: colors.white, margin: 0, fontSize: 13 }}>Team</h3>
-          <Button size="sm" onClick={() => {
-            const n = prompt("Name:");
-            const e = prompt("Email:");
-            const r = prompt("Role (" + ROLES.join(", ") + "):");
-            if (n) addTeamMember({ name: n, email: e || "", role: r || "Core IRT", active: true });
+          <Button size="sm" onClick={async () => {
+            const r = await modal.showPrompt("Add Team Member", [
+              { key: "name", label: "Name", required: true },
+              { key: "email", label: "Email" },
+              { key: "role", label: "Role", type: "select", options: ROLES, defaultValue: "Core IRT" },
+            ]);
+            if (r) addTeamMember({ name: r.name, email: r.email || "", role: r.role || "Core IRT", active: true });
           }}>+ Add</Button>
         </div>
         {team.map((m, i) => (

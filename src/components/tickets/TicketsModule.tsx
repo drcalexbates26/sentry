@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 
 export function TicketsModule() {
   const { tickets, addTicket, updateTicket } = useStore();
+  const modal = useModal();
   const [sel, setSel] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", severity: "Medium", phase: "", assignee: "", details: "" });
@@ -49,9 +50,9 @@ export function TicketsModule() {
                 <span style={{ color: colors.teal }}>[{a.time}]</span> <span style={{ color: colors.textMuted }}>{a.by}:</span> <span style={{ color: colors.text }}>{a.text}</span>
               </div>
             ))}
-            <Button variant="outline" size="sm" style={{ marginTop: 6 }} onClick={() => {
-              const t = prompt("Action:"); const b = prompt("By:");
-              if (t) updateTicket(tk.id, { actions: [...(tk.actions || []), { text: t, by: b || "Unknown", time: new Date().toLocaleTimeString() }] });
+            <Button variant="outline" size="sm" style={{ marginTop: 6 }} onClick={async () => {
+              const r = await modal.showPrompt("Log Action", [{ key: "action", label: "Action Taken", required: true, type: "textarea" }, { key: "by", label: "By", placeholder: "Your name" }]);
+              if (r) updateTicket(tk.id, { actions: [...(tk.actions || []), { text: r.action, by: r.by || "Unknown", time: new Date().toLocaleTimeString() }] });
             }}>+ Log Action</Button>
           </Card>
         </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import { colors } from "@/lib/tokens";
-import { Badge, Button, Card, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, SectionHeader, useModal } from "@/components/ui";
 
 export function IntegrationsModule() {
+  const modal = useModal();
   return (
     <div>
       <SectionHeader sub="Future integrations with your security stack">Integrations</SectionHeader>
@@ -31,7 +32,7 @@ export function IntegrationsModule() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 8 }}>
               {x.a.map((a) => <Badge key={a} color={colors.blue}>{a}</Badge>)}
             </div>
-            <Button variant="outline" size="sm" style={{ width: "100%" }} onClick={() => alert(`Interest registered for ${x.n} integration. We'll notify you when it's available.`)}>Register Interest</Button>
+            <Button variant="outline" size="sm" style={{ width: "100%" }} onClick={() => modal.showAlert("Interest Registered", `Your interest in the ${x.n} integration has been recorded. We'll notify you when it becomes available.`)}>Register Interest</Button>
           </Card>
         ))}
       </div>

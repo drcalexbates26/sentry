@@ -1,6 +1,7 @@
 "use client";
 
 import { Shell } from "@/components/layout";
+import { ModalProvider } from "@/components/ui";
 import { useStore } from "@/store";
 import { Dashboard } from "@/components/dashboard/Dashboard";
 import { ThreatIntelModule } from "@/components/threat-intel/ThreatIntelModule";
@@ -47,8 +48,10 @@ export default function Home() {
   const Module = modules[page] || Dashboard;
 
   return (
-    <Shell>
-      <Module />
-    </Shell>
+    <ModalProvider>
+      <Shell>
+        <Module />
+      </Shell>
+    </ModalProvider>
   );
 }
