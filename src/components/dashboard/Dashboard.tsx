@@ -13,7 +13,7 @@ export function Dashboard() {
   const {
     assessments, tasks, tickets, cases, activeIncident, stakeholders,
     policiesGen, forensicLogs, lessons, irData, onboardDone, org, tech, comp,
-    metrics, setPage, addLesson,
+    metrics, setPage, addLesson, threatIntelItems,
   } = useStore();
 
   const lastAss = assessments.length ? assessments[assessments.length - 1] : null;
@@ -105,6 +105,29 @@ export function Dashboard() {
         )}
       </div>
 
+      {/* Zero-Day Alert Widget */}
+      {threatIntelItems.filter((i) => i.isZeroDay).length > 0 && (
+        <Card style={{ marginBottom: 16, borderLeft: `3px solid ${colors.red}`, background: colors.red + "06" }} onClick={() => setPage("threatintel")}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: colors.red + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⚠️</div>
+              <div>
+                <div style={{ color: colors.red, fontSize: 12, fontWeight: 800 }}>
+                  {threatIntelItems.filter((i) => i.isZeroDay).length} Active Zero-Day Vulnerabilit{threatIntelItems.filter((i) => i.isZeroDay).length !== 1 ? "ies" : "y"}
+                </div>
+                <div style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
+                  {threatIntelItems.filter((i) => i.isZeroDay && i.isActivelyExploited).length > 0
+                    ? `${threatIntelItems.filter((i) => i.isZeroDay && i.isActivelyExploited).length} actively exploited — immediate action required`
+                    : "Review in Threat Intelligence for applicability assessment"
+                  }
+                </div>
+              </div>
+            </div>
+            <Button variant="danger" size="sm" style={{ flexShrink: 0 }}>Review →</Button>
+          </div>
+        </Card>
+      )}
+
       {/* KPI Grid */}
       <div style={sh}><span style={dot(colors.teal)} />Operational Metrics</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 24 }}>
@@ -117,6 +140,8 @@ export function Dashboard() {
           { l: "Key Systems", v: totalSystems, c: totalSystems > 0 ? colors.blue : colors.textDim, u: "mapped" },
           { l: "Policies", v: policiesCount, c: policiesCount > 0 ? colors.purple : colors.textDim, u: "generated" },
           { l: "Forensic Logs", v: forensicCount, c: forensicCount > 0 ? colors.cyan : colors.textDim, u: "entries" },
+          { l: "Zero-Days", v: threatIntelItems.filter((i) => i.isZeroDay).length, c: threatIntelItems.some((i) => i.isZeroDay) ? colors.red : colors.green, u: "active" },
+          { l: "Security Events", v: tickets.filter((t) => t.ticketType === "security-event").length, c: tickets.some((t) => t.ticketType === "security-event" && t.status !== "Closed") ? colors.orange : colors.green, u: "tracked" },
         ].map((x, i) => (
           <Card key={i} style={{ textAlign: "center", padding: "14px 10px" }}>
             <div style={{ fontSize: 8, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 600 }}>{x.l}</div>

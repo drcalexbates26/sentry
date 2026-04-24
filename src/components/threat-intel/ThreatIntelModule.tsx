@@ -7,6 +7,7 @@ import { Badge, Button, Card, Input, Select, SectionHeader, ScoreGauge } from "@
 import { GLOBAL_FEEDS, getIndustryFeeds } from "@/lib/threat-intel/feed-config";
 import { generateExecutiveSummary, generateRecommendations } from "@/lib/threat-intel/summary-generator";
 import type { ThreatIntelItem } from "@/types/threat-intel";
+import type { ThreatIntelStoreItem } from "@/store";
 
 const SEV_COLORS: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green, Informational: colors.textDim };
 
@@ -22,9 +23,76 @@ function timeAgo(dateStr: string): string {
 export function ThreatIntelModule() {
   const {
     threatIntelItems, threatIntelLoading, threatIntelLastFetch,
-    setThreatIntelItems, setThreatIntelLoading,
-    onboardDone, org, addTask, setPage,
+    setThreatIntelItems, setThreatIntelLoading, updateThreatIntelItem,
+    onboardDone, org, addTask, addTicket, addChildTicket, updateTicket,
+    setPage, setActiveIncident, addIncidentLogEntry, recordIncidentMetric,
+    tickets,
   } = useStore();
+
+  const markApplicable = useCallback((threatItem: ThreatIntelStoreItem & ThreatIntelItem, recommendations: string[]) => {
+    const parentId = Math.floor(Math.random() * 1e12);
+    const childIds: number[] = [];
+    recommendations.forEach((r, i) => {
+      const childId = parentId + i + 1;
+      childIds.push(childId);
+      addChildTicket(parentId, {
+        id: childId, title: r, severity: i < 2 ? "Critical" : "High",
+        status: "Open", phase: "Remediation", assignee: "",
+        details: `Recommended action from Threat Intel: ${threatItem.cveId || threatItem.title}\n\nSource: ${threatItem.feedSource}\nRisk Score: ${threatItem.riskScore}/100`,
+        actions: [{ text: "Child ticket created from threat intelligence", by: "System", time: new Date().toLocaleTimeString() }],
+        created: new Date().toLocaleDateString(), parentId, ticketType: "child",
+        threatIntelId: threatItem.id, threatIntelTitle: threatItem.cveId || threatItem.title,
+      });
+      addTask({
+        id: childId + 1000000, title: `[TI] ${r.substring(0, 70)}`,
+        priority: i < 2 ? "Critical" : "High", status: "Backlog", assignee: "",
+        source: `Threat Intel: ${threatItem.cveId || threatItem.title.substring(0, 40)}`,
+        updates: [], created: new Date().toLocaleDateString(), irPhase: "prep", ticketId: childId,
+      });
+    });
+    addTicket({
+      id: parentId,
+      title: `[SECURITY EVENT] ${threatItem.cveId || threatItem.title.substring(0, 80)}`,
+      severity: threatItem.severityRank, status: "Open", phase: "Triage", assignee: "",
+      details: `Security Event from Threat Intelligence\n\nThreat: ${threatItem.title}\nSource: ${threatItem.feedSource}\nCVSS: ${threatItem.cvssScore || "N/A"}\nRisk Score: ${threatItem.riskScore}/100\n\n${threatItem.isZeroDay ? "⚠️ ZERO-DAY\n" : ""}${threatItem.isActivelyExploited ? "🔴 ACTIVELY EXPLOITED\n" : ""}\n${threatItem.description}`,
+      actions: [{ text: `Security event — ${recommendations.length} child tickets generated`, by: "System", time: new Date().toLocaleTimeString() }],
+      created: new Date().toLocaleDateString(), ticketType: "security-event",
+      threatIntelId: threatItem.id, threatIntelTitle: threatItem.cveId || threatItem.title,
+      applicability: "applicable", verifiedExploit: false, childIds,
+    });
+    updateThreatIntelItem(threatItem.id, { applicability: "applicable", securityEventTicketId: parentId });
+  }, [addChildTicket, addTask, addTicket, updateThreatIntelItem]);
+
+  const verifyExploit = useCallback((threatItem: ThreatIntelStoreItem & ThreatIntelItem) => {
+    if (!threatItem.securityEventTicketId) return;
+    updateTicket(threatItem.securityEventTicketId, { verifiedExploit: true, status: "Escalated" });
+    const incTitle = `Verified Exploit: ${threatItem.cveId || threatItem.title.substring(0, 60)}`;
+    const sev = threatItem.riskScore >= 80 ? "Critical" : "High";
+    setActiveIncident({
+      title: incTitle, severity: sev as "Critical" | "High", status: "Active",
+      startTime: new Date().toISOString(), internalCostRate: 150,
+      iocs: threatItem.cveId ? [threatItem.cveId] : [],
+      affectedUsers: [], affectedAssets: [], affectedRegions: [],
+      privacyConcern: false, attorneyPrivilege: false,
+      privilegeEnforcedBy: "", privilegeEnforcedAt: "",
+      phaseStatus: {}, findings: [{ text: `Verified exploit of ${threatItem.cveId || "threat"} confirmed`, time: new Date().toLocaleString() }],
+      timeline: [{ time: new Date().toLocaleString(), event: "Incident auto-declared from verified threat intelligence exploit", elapsed: "00:00:00" }],
+      workstreams: {}, escalation: [], expenses: [], summaries: [], notifications: [], members: [],
+    });
+    const masterId = Math.floor(Math.random() * 1e12);
+    addTicket({
+      id: masterId, title: `[INCIDENT] ${incTitle}`, severity: sev,
+      status: "Open", phase: "Incident Declared", assignee: "",
+      details: `Incident auto-declared from verified exploit.\n\nSource: ${threatItem.cveId || threatItem.title}\nRisk: ${threatItem.riskScore}/100`,
+      actions: [{ text: "Incident auto-declared from verified exploit", by: "System", time: new Date().toLocaleTimeString() }],
+      created: new Date().toLocaleDateString(), ticketType: "master",
+      incidentId: `INC-${masterId}`, incidentTitle: incTitle, childIds: [],
+    });
+    addIncidentLogEntry({ incidentId: `INC-${masterId}`, title: incTitle, severity: sev, masterTicketId: masterId, declaredAt: new Date().toLocaleString(), status: "Active" });
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    recordIncidentMetric(monthNames[new Date().getMonth()]);
+    setPage("commander");
+  }, [updateTicket, setActiveIncident, addTicket, addIncidentLogEntry, recordIncidentMetric, setPage]);
 
   const [tab, setTab] = useState<"global" | "industry">("global");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -97,7 +165,7 @@ export function ThreatIntelModule() {
 
   // ═══ DETAIL VIEW ══════════════════════════════════════════════════
   if (selectedId) {
-    const item = threatIntelItems.find((i) => i.id === selectedId) as ThreatIntelItem | undefined;
+    const item = threatIntelItems.find((i) => i.id === selectedId) as (ThreatIntelStoreItem & ThreatIntelItem) | undefined;
     if (!item) { setSelectedId(null); return null; }
 
     const summary = generateExecutiveSummary(item);
@@ -184,24 +252,75 @@ export function ThreatIntelModule() {
           </Card>
         )}
 
-        {/* Recommendations */}
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Recommended Actions</div>
-          {recs.map((r, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: `1px solid ${colors.panelBorder}`, alignItems: "flex-start" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: i < 2 ? colors.red + "22" : colors.orange + "22", color: i < 2 ? colors.red : colors.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
-              <div style={{ flex: 1, color: colors.text, fontSize: 11 }}>{r}</div>
-              <Button variant="ghost" size="sm" onClick={() => {
-                addTask({ id: Date.now() + i, title: `[TI] ${r.substring(0, 70)}`, priority: i < 2 ? "Critical" : "High", status: "Backlog", assignee: "", source: `Threat Intel: ${item.cveId || item.title.substring(0, 40)}`, updates: [], created: new Date().toLocaleDateString(), irPhase: "prep" });
-              }}>Task →</Button>
+        {/* Applicability Decision */}
+        <Card style={{ marginBottom: 14, borderColor: item.applicability === "applicable" ? colors.red + "44" : item.applicability === "not-applicable" ? colors.green + "44" : colors.orange + "44" }}>
+          <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Applicability Assessment</div>
+          {!item.applicability || item.applicability === "pending" ? (
+            <div>
+              <p style={{ color: colors.text, fontSize: 11, margin: "0 0 12px", lineHeight: 1.5 }}>
+                Does this threat apply to your environment? Marking as applicable will create a Security Event ticket with child tickets for each recommended action.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="danger" onClick={() => markApplicable(item, recs)}>Applicable — Create Security Event</Button>
+                <Button variant="secondary" onClick={() => {
+                  updateThreatIntelItem(item.id, { applicability: "not-applicable" });
+                }}>Not Applicable</Button>
+              </div>
             </div>
-          ))}
+          ) : item.applicability === "applicable" ? (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <Badge color={colors.red}>APPLICABLE</Badge>
+                <span style={{ color: colors.text, fontSize: 11 }}>Security Event ticket created</span>
+                {item.securityEventTicketId && <Badge color={colors.blue}>TKT-{item.securityEventTicketId}</Badge>}
+              </div>
+
+              {/* Verified Exploit check */}
+              {(() => {
+                const parentTicket = tickets.find((t) => t.id === item.securityEventTicketId);
+                const isVerified = parentTicket?.verifiedExploit;
+                return (
+                  <div style={{ background: colors.obsidianM, borderRadius: 6, padding: 12, borderLeft: `3px solid ${isVerified ? colors.red : colors.orange}` }}>
+                    <div style={{ fontSize: 10, color: colors.orange, fontWeight: 700, marginBottom: 6 }}>Verified Exploit in Client Environment?</div>
+                    {!isVerified ? (
+                      <div>
+                        <p style={{ color: colors.textMuted, fontSize: 10, margin: "0 0 8px", lineHeight: 1.4 }}>
+                          If this vulnerability has been confirmed as exploited in your environment, this will immediately launch an incident in Commander.
+                        </p>
+                        <Button variant="danger" size="sm" onClick={() => verifyExploit(item)}>Confirmed — Launch Incident</Button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Badge color={colors.red}>EXPLOIT VERIFIED</Badge>
+                        <span style={{ color: colors.text, fontSize: 10 }}>Incident has been declared in Commander.</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Recommendations with status */}
+              <div style={{ marginTop: 12, fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Recommended Actions ({recs.length} tickets created)</div>
+              {recs.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}`, alignItems: "center" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: i < 2 ? colors.red + "22" : colors.orange + "22", color: i < 2 ? colors.red : colors.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
+                  <span style={{ color: colors.text, fontSize: 10, flex: 1 }}>{r}</span>
+                  <Badge color={colors.blue}>TKT</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Badge color={colors.green}>NOT APPLICABLE</Badge>
+              <span style={{ color: colors.textMuted, fontSize: 11 }}>This threat has been assessed as not applicable to your environment.</span>
+              <Button variant="ghost" size="sm" onClick={() => updateThreatIntelItem(item.id, { applicability: "pending" })}>Re-assess</Button>
+            </div>
+          )}
         </Card>
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
           <Button variant="outline" size="sm" onClick={() => window.open(item.link, "_blank")}>View Original Source</Button>
-          <Button variant="outline" size="sm" onClick={() => setPage("commander")}>Create Incident →</Button>
         </div>
 
         {/* Related */}

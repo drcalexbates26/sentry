@@ -123,6 +123,7 @@ interface AppState {
   threatIntelLastFetch: string;
   setThreatIntelItems: (items: ThreatIntelStoreItem[]) => void;
   setThreatIntelLoading: (loading: boolean) => void;
+  updateThreatIntelItem: (id: string, updates: Partial<ThreatIntelStoreItem>) => void;
 
   // Policies
   policiesGen: string[];
@@ -280,6 +281,8 @@ export interface ThreatIntelStoreItem {
   mitreAttackIds: string[];
   recommendations?: string;
   executiveSummary?: string;
+  applicability?: "applicable" | "not-applicable" | "pending";
+  securityEventTicketId?: number;
 }
 
 const defaultOrg: Organization = {
@@ -425,6 +428,8 @@ export const useStore = create<AppState>((set) => ({
   threatIntelLastFetch: "",
   setThreatIntelItems: (items) => set({ threatIntelItems: items, threatIntelLastFetch: new Date().toLocaleString() }),
   setThreatIntelLoading: (loading) => set({ threatIntelLoading: loading }),
+  updateThreatIntelItem: (id, updates) =>
+    set((s) => ({ threatIntelItems: s.threatIntelItems.map((i) => (i.id === id ? { ...i, ...updates } : i)) })),
 
   policiesGen: [],
   addPolicyGen: (id) => set((s) => ({ policiesGen: [...new Set([...s.policiesGen, id])] })),

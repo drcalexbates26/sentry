@@ -16,7 +16,12 @@ export interface Ticket {
   // Incident linkage
   incidentId?: string;
   incidentTitle?: string;
-  ticketType?: "master" | "child" | "standalone";
+  ticketType?: "master" | "child" | "standalone" | "security-event";
+  // Threat Intel linkage
+  threatIntelId?: string;
+  threatIntelTitle?: string;
+  applicability?: "applicable" | "not-applicable" | "pending";
+  verifiedExploit?: boolean;
 }
 
 export interface TicketAction {

@@ -88,13 +88,14 @@ export function TicketsModule() {
       </Card>
     )}
     {/* Master tickets first, then standalone, then children grouped under parents */}
-    {tickets.filter((tk) => tk.ticketType === "master" || (!tk.ticketType && !tk.parentId)).map((tk) => {
+    {tickets.filter((tk) => tk.ticketType === "master" || tk.ticketType === "security-event" || (!tk.ticketType && !tk.parentId)).map((tk) => {
       const children = tickets.filter((c) => c.parentId === tk.id);
+      const borderColor = tk.ticketType === "security-event" ? colors.orange : tk.ticketType === "master" ? colors.red : undefined;
       return (
         <div key={tk.id}>
           <Card onClick={() => setSel(tk.id)} style={{
             cursor: "pointer", marginBottom: children.length > 0 ? 2 : 8,
-            borderLeft: tk.ticketType === "master" ? `3px solid ${colors.red}` : undefined,
+            borderLeft: borderColor ? `3px solid ${borderColor}` : undefined,
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -104,6 +105,8 @@ export function TicketsModule() {
                 </div>
                 <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
                   {tk.ticketType === "master" && <Badge color={colors.red}>Master</Badge>}
+                  {tk.ticketType === "security-event" && <Badge color={colors.orange}>Security Event</Badge>}
+                  {tk.verifiedExploit && <Badge color={colors.red}>Exploit Verified</Badge>}
                   {tk.incidentTitle && <Badge color={colors.orange}>{tk.incidentTitle}</Badge>}
                   <span style={{ color: colors.textDim, fontSize: 9 }}>{tk.created} · {tk.assignee || "Unassigned"}</span>
                 </div>
