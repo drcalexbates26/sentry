@@ -111,6 +111,7 @@ interface AppState {
   // Pen Test Requests
   penTestRequests: PenTestRequest[];
   addPenTestRequest: (req: PenTestRequest) => void;
+  updatePenTestRequest: (id: number, updates: Partial<PenTestRequest>) => void;
 
   // Notification Log
   notificationLog: NotificationEntry[];
@@ -167,15 +168,73 @@ export interface ForensicLogEntry {
   locked: boolean;
 }
 
+export type PenTestStatus = "Submitted" | "Under Review" | "Pricing Sent" | "Approved" | "Active" | "Complete" | "Cancelled";
+
+export interface PenTestCommsEntry {
+  id: number;
+  from: string;
+  message: string;
+  timestamp: string;
+  type: "note" | "status" | "approval" | "finding" | "system";
+}
+
+export interface PenTestTimelineEntry {
+  event: string;
+  timestamp: string;
+  by: string;
+}
+
+export interface PenTestFinding {
+  id: number;
+  title: string;
+  severity: "Critical" | "High" | "Medium" | "Low" | "Informational";
+  status: "Open" | "In Progress" | "Remediated" | "Accepted Risk";
+  description: string;
+  recommendation: string;
+  evidence: string;
+  testSource: string;
+  cvss: string;
+  nistMapping: string;
+  remediationNotes: string;
+  remediatedAt: string;
+  remediatedBy: string;
+}
+
 export interface PenTestRequest {
   id: number;
   testType: string;
   orgName: string;
   contactEmail: string;
-  status: "Submitted" | "In Review" | "Scheduled" | "Complete";
+  status: PenTestStatus;
   submittedAt: string;
   formData: Record<string, string>;
   notes: string;
+
+  // Dark Rock review
+  reviewer: string;
+  reviewNotes: string;
+  pricing: { amount: number; description: string; sentAt: string } | null;
+
+  // Approval
+  approvedAt: string;
+  approvedBy: string;
+
+  // Active testing
+  tester: string;
+  testerEmail: string;
+  startedAt: string;
+  completedAt: string;
+
+  // Communication & timeline
+  commsLog: PenTestCommsEntry[];
+  timeline: PenTestTimelineEntry[];
+
+  // Findings
+  findings: PenTestFinding[];
+
+  // Report
+  reportTitle: string;
+  reportUploadedAt: string;
 }
 
 export interface NotificationEntry {
@@ -321,6 +380,8 @@ export const useStore = create<AppState>((set) => ({
 
   penTestRequests: [],
   addPenTestRequest: (req) => set((s) => ({ penTestRequests: [req, ...s.penTestRequests] })),
+  updatePenTestRequest: (id, updates) =>
+    set((s) => ({ penTestRequests: s.penTestRequests.map((r) => (r.id === id ? { ...r, ...updates } : r)) })),
 
   notificationLog: [],
   addNotification: (entry) => set((s) => ({ notificationLog: [entry, ...s.notificationLog] })),
