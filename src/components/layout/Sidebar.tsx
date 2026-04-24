@@ -41,11 +41,17 @@ export function Sidebar() {
               width: 32, height: 32, borderRadius: 8, flexShrink: 0,
               background: `linear-gradient(135deg, ${colors.teal}, ${colors.tealDark})`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: 14, color: themeMode === "dark" ? "#080C12" : "#FFFFFF",
               boxShadow: `0 2px 8px ${colors.teal}33`,
             }}
           >
-            S
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              {/* Rook chess piece */}
+              <path d="M5 20h14v2H5v-2z" fill="#0A0E14"/>
+              <path d="M7 18h10l1-3H6l1 3z" fill="#0A0E14"/>
+              <path d="M8 15h8V9H8v6z" fill="#0A0E14"/>
+              <path d="M7 9h10l-1-3H8L7 9z" fill="#0A0E14"/>
+              <path d="M6 6h2V3h2v3h4V3h2v3h2v1H6V6z" fill="#0A0E14"/>
+            </svg>
           </div>
           {sidebarOpen && (
             <div>
