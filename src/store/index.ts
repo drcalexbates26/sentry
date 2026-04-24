@@ -117,6 +117,13 @@ interface AppState {
   notificationLog: NotificationEntry[];
   addNotification: (entry: NotificationEntry) => void;
 
+  // Threat Intel
+  threatIntelItems: ThreatIntelStoreItem[];
+  threatIntelLoading: boolean;
+  threatIntelLastFetch: string;
+  setThreatIntelItems: (items: ThreatIntelStoreItem[]) => void;
+  setThreatIntelLoading: (loading: boolean) => void;
+
   // Policies
   policiesGen: string[];
   addPolicyGen: (id: string) => void;
@@ -246,6 +253,33 @@ export interface NotificationEntry {
   timestamp: string;
   privileged: boolean;
   module: string;
+}
+
+export interface ThreatIntelStoreItem {
+  id: string;
+  feedSource: string;
+  feedCategory: string;
+  industryTag?: string;
+  title: string;
+  description: string;
+  link: string;
+  publishedAt: string;
+  cveId?: string;
+  cvssScore?: number;
+  cvssVector?: string;
+  cweId?: string;
+  affectedVendors: string[];
+  affectedProducts: string[];
+  severityRank: string;
+  impactScore: number;
+  likelihoodScore: number;
+  riskScore: number;
+  isZeroDay: boolean;
+  isActivelyExploited: boolean;
+  tags: string[];
+  mitreAttackIds: string[];
+  recommendations?: string;
+  executiveSummary?: string;
 }
 
 const defaultOrg: Organization = {
@@ -385,6 +419,12 @@ export const useStore = create<AppState>((set) => ({
 
   notificationLog: [],
   addNotification: (entry) => set((s) => ({ notificationLog: [entry, ...s.notificationLog] })),
+
+  threatIntelItems: [],
+  threatIntelLoading: false,
+  threatIntelLastFetch: "",
+  setThreatIntelItems: (items) => set({ threatIntelItems: items, threatIntelLastFetch: new Date().toLocaleString() }),
+  setThreatIntelLoading: (loading) => set({ threatIntelLoading: loading }),
 
   policiesGen: [],
   addPolicyGen: (id) => set((s) => ({ policiesGen: [...new Set([...s.policiesGen, id])] })),

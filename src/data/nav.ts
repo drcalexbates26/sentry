@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Rocket, Shield, FileText, Swords, BookOpen,
+  LayoutDashboard, ShieldAlert, Rocket, Shield, FileText, Swords, BookOpen,
   Target, Crosshair, TicketCheck, ListTodo, Microscope, Users, FileKey,
   Radio, Lock, Puzzle, ClipboardList,
 } from "lucide-react";
@@ -13,6 +13,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "dash", label: "Dashboard", icon: LayoutDashboard },
+  { id: "threatintel", label: "Threat Intel", icon: ShieldAlert },
   { id: "onboard", label: "Onboarding", icon: Rocket },
   { id: "assess", label: "Assessment", icon: Shield },
   { id: "irplan", label: "IR Planner", icon: FileText },

@@ -195,3 +195,44 @@ model Lesson {
   orgId     String
   createdAt DateTime @default(now())
 }
+
+model ThreatIntel {
+  id                  String   @id @default(cuid())
+  feedSource          String
+  feedCategory        String
+  industryTag         String?
+
+  title               String
+  description         String   @db.Text
+  link                String
+  publishedAt         DateTime
+  fetchedAt           DateTime @default(now())
+
+  cveId               String?
+  cvssScore           Float?
+  cvssVector          String?
+  cweId               String?
+  affectedVendors     String[]
+  affectedProducts    String[]
+
+  severityRank        String
+  impactScore         Int
+  likelihoodScore     Int
+  riskScore           Int
+  isZeroDay           Boolean  @default(false)
+  isActivelyExploited Boolean  @default(false)
+
+  tags                String[]
+  mitreAttackIds      String[]
+  recommendations     String?  @db.Text
+  executiveSummary    String?  @db.Text
+
+  orgId               String?
+  expiresAt           DateTime
+
+  @@index([publishedAt])
+  @@index([severityRank])
+  @@index([feedCategory])
+  @@index([industryTag])
+  @@index([expiresAt])
+}

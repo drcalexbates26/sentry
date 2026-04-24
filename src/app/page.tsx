@@ -3,6 +3,7 @@
 import { Shell } from "@/components/layout";
 import { useStore } from "@/store";
 import { Dashboard } from "@/components/dashboard/Dashboard";
+import { ThreatIntelModule } from "@/components/threat-intel/ThreatIntelModule";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { AssessmentModule } from "@/components/assessment/AssessmentModule";
 import { IRPlanner } from "@/components/irplanner/IRPlanner";
@@ -22,6 +23,7 @@ import { IntegrationsModule } from "@/components/integrations/IntegrationsModule
 
 const modules: Record<string, React.ComponentType> = {
   dash: Dashboard,
+  threatintel: ThreatIntelModule,
   onboard: Onboarding,
   assess: AssessmentModule,
   irplan: IRPlanner,
