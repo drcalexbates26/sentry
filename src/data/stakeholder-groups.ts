@@ -8,7 +8,7 @@ export const STAKEHOLDER_GROUPS = [
   { key: "cyberInsuranceInternal", label: "Cyber Insurance (Internal)", icon: "📋", desc: "Internal contacts responsible for managing the cyber insurance relationship and initiating claims.", color: "#06B6D4" },
   { key: "cyberInsuranceExternal", label: "Cyber Insurance (External)", icon: "🏢", desc: "Insurance carrier contacts, claims adjusters, and breach coach assignments.", color: "#06B6D4" },
   { key: "externalLegal", label: "External Legal Counsel", icon: "🏛️", desc: "Outside counsel specializing in data breach, regulatory response, and litigation management.", color: "#8B5CF6" },
-  { key: "forensicsContact", label: "Approved Forensics Provider", icon: "🔬", desc: "Pre-approved digital forensics and incident response firms for evidence collection and analysis.", color: "#EF4444" },
+  { key: "forensicsContact", label: "Forensic Contact", icon: "🔬", desc: "Digital forensics and incident response contacts for evidence collection, analysis, and chain-of-custody management.", color: "#EF4444" },
   { key: "hrContacts", label: "Human Resources", icon: "👥", desc: "HR leadership for insider threat coordination, employee notifications, and personnel actions.", color: "#22C55E" },
   { key: "prContact", label: "Public Relations / Communications", icon: "📣", desc: "Internal and external PR contacts for media relations, public statements, and stakeholder messaging.", color: "#F97316" },
   { key: "privacyContact", label: "Privacy Officer / Data Protection", icon: "🔏", desc: "Privacy officer, data protection officer (DPO), and privacy counsel for breach notification determinations, PII/PHI impact assessment, and regulatory privacy obligations.", color: "#06B6D4" },

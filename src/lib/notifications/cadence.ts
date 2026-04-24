@@ -35,7 +35,7 @@ export const GROUP_LABELS: Record<string, string> = {
   cyberInsuranceExternal: "Cyber Insurance (External)",
   legalContact: "Legal Counsel",
   externalLegal: "External Legal",
-  forensicsContact: "Forensics / Dark Rock",
+  forensicsContact: "Forensic Contact",
   hrContacts: "Human Resources",
   prContact: "PR / Communications",
   lawEnforcement: "Law Enforcement",

@@ -466,7 +466,7 @@ export function Commander() {
                 { role: "Legal Counsel", owner: "", status: "Pending", p: 4 },
                 { role: "Cyber Insurance", owner: "", status: "Pending", p: 5 },
                 { role: "Executive Leadership", owner: "", status: "Pending", p: 6 },
-                { role: "Dark Rock Forensics", owner: "", status: "Pending", p: 7 },
+                { role: "Forensic Contact", owner: "", status: "Pending", p: 7 },
                 { role: "External Legal", owner: "", status: "Pending", p: 8 },
                 { role: "HR", owner: "", status: "Pending", p: 9 },
                 { role: "PR / Communications", owner: "", status: "Pending", p: 10 },
@@ -529,7 +529,7 @@ export function Commander() {
       {/* Workstreams / Notifications / Summaries - simplified */}
       {tab === "workstreams" && (
         <div>
-          {[{ k: "Security", r: "Security Engineering" }, { k: "Legal", r: "Legal Counsel" }, { k: "Executive", r: "Executive Leadership" }, { k: "Insurance", r: "Cyber Insurance" }, { k: "Forensics", r: "Dark Rock Forensics" }, { k: "HR", r: "Human Resources" }, { k: "PR", r: "Public Relations" }, { k: "Privacy", r: "Privacy Officer" }].map((ws) => {
+          {[{ k: "Security", r: "Security Engineering" }, { k: "Legal", r: "Legal Counsel" }, { k: "Executive", r: "Executive Leadership" }, { k: "Insurance", r: "Cyber Insurance" }, { k: "Forensics", r: "Forensic Contact" }, { k: "HR", r: "Human Resources" }, { k: "PR", r: "Public Relations" }, { k: "Privacy", r: "Privacy Officer" }].map((ws) => {
             const d = inc.workstreams[ws.k] || { tasks: [], docs: [], accomplishments: [], risks: [] };
             const dn = d.tasks.filter((t) => t.done).length;
             const pct = d.tasks.length ? Math.round((dn / d.tasks.length) * 100) : 0;

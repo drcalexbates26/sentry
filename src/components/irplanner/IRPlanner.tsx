@@ -14,7 +14,7 @@ export function IRPlanner() {
 
   return (
     <div>
-      <SectionHeader sub="Full 8-phase NIST 800-61 lifecycle with Dark Rock forensics">IR Planner</SectionHeader>
+      <SectionHeader sub="Full 8-phase NIST 800-61 lifecycle">IR Planner</SectionHeader>
       <div style={{ display: "flex", gap: 3, marginBottom: 16, flexWrap: "wrap", borderBottom: `1px solid ${colors.panelBorder}`, paddingBottom: 6 }}>
         {["lifecycle", "severity", "contacts", "eoc", "emergency"].map((t) => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: "5px 12px", borderRadius: "5px 5px 0 0", border: "none", cursor: "pointer", background: tab === t ? colors.teal + "22" : "transparent", color: tab === t ? colors.teal : colors.textMuted, fontSize: 11, fontWeight: 600, fontFamily: "inherit", textTransform: "capitalize" }}>{t}</button>
