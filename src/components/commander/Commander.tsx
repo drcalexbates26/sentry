@@ -8,6 +8,7 @@ import { IR_PHASES } from "@/data/ir-phases";
 import { PLAYBOOKS } from "@/data/playbooks";
 import type { Incident, Deadline } from "@/types/incident";
 import { buildNotification, copyNotification } from "@/lib/notifications";
+import { NotificationCenter } from "./NotificationCenter";
 
 const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
 
@@ -553,35 +554,7 @@ export function Commander() {
         </div>
       )}
 
-      {tab === "notifications" && (
-        <Card>
-          <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Generate Notification</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 6 }}>
-            {[{ k: "management", l: "Management", i: "👔" }, { k: "executive", l: "Executive", i: "🏛️" }, { k: "legal", l: "Legal", i: "⚖️" }, { k: "insurance", l: "Insurance", i: "📋" }, { k: "board", l: "Board", i: "📊" }].map((n) => (
-              <Card key={n.k} style={{ padding: 10, cursor: "pointer" }} onClick={() => {
-                addTL(`Notification: ${n.l}`);
-                setInc((p) => ({ ...p, notifications: [...p.notifications, { type: n.l, time: new Date().toLocaleString() }] }));
-                modal.showAlert("Notification Generated", `${n.l} notification has been generated and copied to clipboard.`);
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 14 }}>{n.i}</span>
-                  <div><div style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{n.l}</div><div style={{ color: colors.textDim, fontSize: 7 }}>Click to generate</div></div>
-                </div>
-              </Card>
-            ))}
-          </div>
-          {inc.notifications.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>Notification Log</div>
-              {inc.notifications.map((n, i) => (
-                <div key={i} style={{ padding: "3px 0", borderBottom: `1px solid ${colors.panelBorder}`, fontSize: 9 }}>
-                  <span style={{ color: colors.teal }}>[{n.time}]</span> <span style={{ color: colors.text }}>{n.type}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
+      {tab === "notifications" && <NotificationCenter incident={inc} />}
 
       {tab === "summaries" && (
         <div>

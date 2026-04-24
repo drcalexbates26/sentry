@@ -236,3 +236,59 @@ model ThreatIntel {
   @@index([industryTag])
   @@index([expiresAt])
 }
+
+model IncidentNotification {
+  id                String   @id @default(cuid())
+  incidentId        String
+
+  type              String
+  tier              Int
+  groupKey          String
+  groupLabel        String
+
+  recipients        Json
+  recipientCount    Int
+
+  subject           String
+  body              String   @db.Text
+  classification    String
+  channel           String   @default("email")
+
+  deltaFromId       String?
+  deltaSummary      String?  @db.Text
+  version           Int      @default(1)
+
+  incidentSnapshot  Json
+
+  correctionOfId    String?
+  correctionReason  String?
+  retracted         Boolean  @default(false)
+  retractedBy       String?
+  retractedAt       DateTime?
+  retractedReason   String?
+
+  generatedBy       String
+  generatedByEmail  String?
+  generatedAt       DateTime @default(now())
+  approvalRequired  Boolean  @default(false)
+  approvedBy        String?
+  approvedByEmail   String?
+  approvedAt        DateTime?
+  approvalStatus    String?
+  rejectionReason   String?
+  sentBy            String
+  sentByEmail       String?
+  sentAt            DateTime @default(now())
+  sendMethod        String
+
+  acknowledged      Boolean  @default(false)
+  acknowledgedBy    String?
+  acknowledgedByEmail String?
+  acknowledgedAt    DateTime?
+
+  orgId             String
+
+  @@index([incidentId, groupKey])
+  @@index([incidentId, sentAt])
+  @@index([incidentId, version])
+}
