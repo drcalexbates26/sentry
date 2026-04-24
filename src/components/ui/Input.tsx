@@ -24,17 +24,29 @@ export function Input({
   style,
 }: InputProps) {
   const colors = useColors();
+
   const fieldStyle: React.CSSProperties = {
     width: "100%",
-    padding: "7px 11px",
+    padding: "8px 12px",
     background: colors.obsidianM,
     border: `1px solid ${colors.panelBorder}`,
-    borderRadius: 6,
+    borderRadius: 7,
     color: colors.text,
     fontSize: 12,
     fontFamily: "inherit",
     outline: "none",
     boxSizing: "border-box" as const,
+    transition: "border-color 0.15s, box-shadow 0.15s",
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.style.borderColor = colors.teal + "66";
+    e.target.style.boxShadow = `0 0 0 2px ${colors.teal}15`;
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.style.borderColor = colors.panelBorder;
+    e.target.style.boxShadow = "none";
   };
 
   return (
@@ -45,7 +57,7 @@ export function Input({
             display: "block",
             fontSize: 10,
             color: colors.textMuted,
-            marginBottom: 4,
+            marginBottom: 5,
             fontWeight: 600,
             letterSpacing: "0.04em",
           }}
@@ -59,6 +71,8 @@ export function Input({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
+          onFocus={handleFocus as unknown as React.FocusEventHandler<HTMLTextAreaElement>}
+          onBlur={handleBlur as unknown as React.FocusEventHandler<HTMLTextAreaElement>}
           style={{ ...fieldStyle, resize: "vertical" as const }}
         />
       ) : (
@@ -67,6 +81,8 @@ export function Input({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          onFocus={handleFocus as unknown as React.FocusEventHandler<HTMLInputElement>}
+          onBlur={handleBlur as unknown as React.FocusEventHandler<HTMLInputElement>}
           style={fieldStyle}
         />
       )}

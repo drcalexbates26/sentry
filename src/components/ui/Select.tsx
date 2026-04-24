@@ -24,7 +24,7 @@ export function Select({ label, value, onChange, options }: SelectProps) {
             display: "block",
             fontSize: 10,
             color: colors.textMuted,
-            marginBottom: 4,
+            marginBottom: 5,
             fontWeight: 600,
             letterSpacing: "0.04em",
           }}
@@ -37,15 +37,21 @@ export function Select({ label, value, onChange, options }: SelectProps) {
         onChange={(e) => onChange(e.target.value)}
         style={{
           width: "100%",
-          padding: "7px 11px",
+          padding: "8px 12px",
           background: colors.obsidianM,
           border: `1px solid ${colors.panelBorder}`,
-          borderRadius: 6,
+          borderRadius: 7,
           color: colors.text,
           fontSize: 12,
           fontFamily: "inherit",
           outline: "none",
           boxSizing: "border-box",
+          cursor: "pointer",
+          appearance: "none",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='${encodeURIComponent(colors.textDim)}' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E")`,
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 10px center",
+          paddingRight: 30,
         }}
       >
         <option value="">Select...</option>

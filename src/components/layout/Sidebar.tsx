@@ -12,11 +12,11 @@ export function Sidebar() {
   return (
     <aside
       style={{
-        width: sidebarOpen ? 210 : 48,
+        width: sidebarOpen ? 215 : 50,
         flexShrink: 0,
         background: colors.bgL,
         borderRight: `1px solid ${colors.panelBorder}`,
-        transition: "width 0.15s",
+        transition: "width 0.18s ease",
         display: "flex",
         flexDirection: "column",
         position: "sticky",
@@ -28,27 +28,28 @@ export function Sidebar() {
       {/* Logo */}
       <div
         style={{
-          padding: sidebarOpen ? "14px 14px 10px" : "14px 6px 10px",
+          padding: sidebarOpen ? "16px 16px 12px" : "16px 8px 12px",
           borderBottom: `1px solid ${colors.panelBorder}`,
         }}
       >
         <div
-          style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
           onClick={() => setSidebarOpen(!sidebarOpen)}
         >
           <div
             style={{
-              width: 30, height: 30, borderRadius: 6, flexShrink: 0,
+              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
               background: `linear-gradient(135deg, ${colors.teal}, ${colors.tealDark})`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: 13, color: themeMode === "dark" ? "#0A0E14" : "#FFFFFF",
+              fontWeight: 800, fontSize: 14, color: themeMode === "dark" ? "#080C12" : "#FFFFFF",
+              boxShadow: `0 2px 8px ${colors.teal}33`,
             }}
           >
             S
           </div>
           {sidebarOpen && (
             <div>
-              <div style={{ color: colors.white, fontWeight: 700, fontSize: 12 }}>Sentry</div>
+              <div style={{ color: colors.white, fontWeight: 700, fontSize: 13 }}>Sentry</div>
               <div style={{ color: colors.teal, fontSize: 8, fontWeight: 700, letterSpacing: "0.14em" }}>
                 DARK ROCK LABS
               </div>
@@ -58,31 +59,37 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, padding: "4px 4px", overflowY: "auto" }}>
-        {NAV_GROUPS.map((group) => {
+      <nav style={{ flex: 1, padding: "6px 6px", overflowY: "auto" }}>
+        {NAV_GROUPS.map((group, groupIdx) => {
           const isCollapsed = collapsedGroups[group.id] ?? false;
           const hasActiveItem = group.items.some((item) => item.id === page);
 
           return (
-            <div key={group.id} style={{ marginBottom: group.collapsible ? 2 : 4 }}>
+            <div key={group.id} style={{ marginBottom: 2 }}>
+              {/* Separator before collapsible groups */}
+              {group.collapsible && sidebarOpen && groupIdx > 0 && (
+                <div style={{ height: 1, background: colors.panelBorder, margin: "6px 8px 4px" }} />
+              )}
+
               {/* Group Header */}
               {group.collapsible && sidebarOpen && (
                 <button
                   onClick={() => toggleGroup(group.id)}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
-                    width: "100%", padding: "6px 10px", marginTop: group.id === "onboarding" ? 4 : 2,
+                    width: "100%", padding: "5px 10px", marginTop: 2,
                     borderRadius: 5, border: "none", cursor: "pointer",
                     background: "transparent",
                     color: hasActiveItem ? colors.teal : colors.textDim,
                     fontSize: 9, fontWeight: 700, fontFamily: "inherit",
                     textTransform: "uppercase", letterSpacing: "0.1em",
+                    transition: "color 0.15s",
                   }}
                 >
                   <span>{group.label}</span>
                   {isCollapsed
-                    ? <ChevronRight size={11} style={{ opacity: 0.5 }} />
-                    : <ChevronDown size={11} style={{ opacity: 0.5 }} />
+                    ? <ChevronRight size={10} style={{ opacity: 0.5 }} />
+                    : <ChevronDown size={10} style={{ opacity: 0.5 }} />
                   }
                 </button>
               )}
@@ -96,55 +103,65 @@ export function Sidebar() {
                     key={item.id}
                     onClick={() => setPage(item.id)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 8,
+                      display: "flex", alignItems: "center", gap: 9,
                       width: "100%",
                       padding: sidebarOpen
-                        ? (group.collapsible ? "5px 10px 5px 18px" : "6px 10px")
-                        : "6px 0",
+                        ? (group.collapsible ? "6px 10px 6px 20px" : "7px 10px")
+                        : "7px 0",
                       justifyContent: sidebarOpen ? "flex-start" : "center",
-                      borderRadius: 6, border: "none", cursor: "pointer",
+                      borderRadius: 7, border: "none", cursor: "pointer",
                       marginBottom: 1,
-                      background: isActive ? colors.teal + "18" : "transparent",
+                      background: isActive ? colors.teal + "15" : "transparent",
+                      borderLeft: isActive && sidebarOpen ? `2px solid ${colors.teal}` : "2px solid transparent",
                       color: isActive ? colors.teal : colors.textMuted,
                       fontSize: 11,
                       fontWeight: isActive ? 600 : 400,
                       fontFamily: "inherit",
-                      transition: "background 0.1s",
+                      transition: "all 0.12s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        (e.currentTarget as HTMLElement).style.background = colors.panelBorder + "33";
+                        (e.currentTarget as HTMLElement).style.color = colors.text;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                        (e.currentTarget as HTMLElement).style.color = colors.textMuted;
+                      }
                     }}
                   >
-                    <Icon size={14} style={{ flexShrink: 0 }} />
+                    <Icon size={14} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7 }} />
                     {sidebarOpen && <span>{item.label}</span>}
                   </button>
                 );
               })}
-
-              {/* Collapsed indicator when sidebar collapsed */}
-              {group.collapsible && isCollapsed && sidebarOpen && (
-                <div style={{ height: 1, background: colors.panelBorder, margin: "4px 10px" }} />
-              )}
             </div>
           );
         })}
       </nav>
 
-      {/* Footer — Theme toggle + version */}
-      <div style={{ padding: sidebarOpen ? "8px 14px" : "8px 6px", borderTop: `1px solid ${colors.panelBorder}`, display: "flex", flexDirection: "column", gap: 6 }}>
+      {/* Footer */}
+      <div style={{ padding: sidebarOpen ? "10px 14px" : "10px 6px", borderTop: `1px solid ${colors.panelBorder}` }}>
         {/* Theme Toggle */}
         <button
           onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
           style={{
-            display: "flex", alignItems: "center", gap: 6,
+            display: "flex", alignItems: "center", gap: 7,
             justifyContent: sidebarOpen ? "flex-start" : "center",
-            width: "100%", padding: "5px 4px",
-            borderRadius: 5, border: "none", cursor: "pointer",
-            background: "transparent",
+            width: "100%", padding: "6px 6px",
+            borderRadius: 7, border: `1px solid ${colors.panelBorder}`,
+            cursor: "pointer",
+            background: colors.obsidianM,
             color: colors.textMuted, fontSize: 10, fontFamily: "inherit",
+            transition: "all 0.15s",
           }}
         >
           {themeMode === "dark" ? <Sun size={13} /> : <Moon size={13} />}
-          {sidebarOpen && <span>{themeMode === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+          {sidebarOpen && <span style={{ fontWeight: 500 }}>{themeMode === "dark" ? "Light Mode" : "Dark Mode"}</span>}
         </button>
-        {sidebarOpen && <div style={{ fontSize: 8, color: colors.textDim }}>v3.1.0</div>}
+        {sidebarOpen && <div style={{ fontSize: 8, color: colors.textDim, marginTop: 6 }}>Sentry v3.1.0</div>}
       </div>
     </aside>
   );

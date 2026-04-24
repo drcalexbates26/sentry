@@ -1,49 +1,74 @@
 @import "tailwindcss";
 
 @theme {
-  --color-teal: #00B4A6;
-  --color-teal-dark: #009A8E;
-  --color-teal-light: #33C4B8;
-  --color-obsidian: #0A0E14;
-  --color-obsidian-l: #0F1520;
-  --color-obsidian-m: #151C28;
-  --color-panel: #111827;
-  --color-panel-light: #1A2332;
-  --color-panel-border: #1E293B;
-  --color-sentry-text: #E2E8F0;
-  --color-text-muted: #94A3B8;
-  --color-text-dim: #64748B;
-
   --font-display: 'Figtree', sans-serif;
   --font-body: 'Source Sans 3', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 
-body {
-  background-color: #0A0E14;
-  color: #E2E8F0;
-  font-family: 'Figtree', 'Source Sans 3', -apple-system, sans-serif;
+* {
+  box-sizing: border-box;
 }
 
+body {
+  font-family: 'Figtree', 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth transitions for theme switching */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+/* Opt-out of transition for transforms and sizes */
+button, a, input, select, textarea {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+}
+
+/* Scrollbar — dark */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F1520;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
-  border-radius: 3px;
+  background: rgba(100, 120, 150, 0.3);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: rgba(100, 120, 150, 0.5);
 }
 
+/* Selection */
 ::selection {
-  background-color: rgba(0, 180, 166, 0.3);
-  color: #E2E8F0;
+  background-color: rgba(0, 212, 200, 0.25);
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid rgba(0, 212, 200, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Remove default button styles */
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Better text rendering for mono */
+pre, code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }

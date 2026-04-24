@@ -1,100 +1,180 @@
 "use client";
 
 import { useColors } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { useStore } from "@/store";
 import type { UserRole } from "@/store";
-import { Badge, Card, Select, SectionHeader } from "@/components/ui";
+import { Badge, Card, SectionHeader } from "@/components/ui";
 
-const ROLE_DEFS: { role: UserRole; label: string; desc: string; permissions: string[] }[] = [
+const ROLE_DEFS: { role: UserRole; label: string; desc: string; color: string; permissions: string[] }[] = [
   {
-    role: "admin", label: "Administrator", desc: "Full platform access. Can manage users, settings, RBAC assignments, and all operational modules.",
-    permissions: ["All modules", "User management", "RBAC assignments", "Settings", "Integrations config", "Data export", "Incident declaration", "Policy generation"],
+    role: "admin", label: "Administrator",
+    desc: "Full platform access including user management, RBAC, settings, and all operational modules.",
+    color: "#F56565",
+    permissions: ["All modules", "User management", "RBAC config", "Settings", "Integrations", "Data export", "Incident declaration", "Policy generation"],
   },
   {
-    role: "manager", label: "Manager", desc: "Full operational access. Can declare incidents, manage tickets/tasks, access all IR modules. Cannot manage users or RBAC.",
-    permissions: ["All operational modules", "Incident declaration", "Ticket/task management", "Playbook activation", "Report generation", "Stakeholder management", "Evidence vault"],
+    role: "manager", label: "Manager",
+    desc: "Full operational access. Can declare incidents, manage all tickets and tasks, activate playbooks.",
+    color: "#ED8936",
+    permissions: ["All operational modules", "Incident declaration", "Ticket management", "Playbook activation", "Report generation", "Evidence vault"],
   },
   {
-    role: "analyst", label: "Analyst", desc: "Can create and edit own work items. Can view all modules but cannot declare incidents or manage RBAC.",
-    permissions: ["View all modules", "Create/edit own tickets", "Create/edit own tasks", "Assessment completion", "View reports", "Add evidence", "View stakeholders"],
+    role: "analyst", label: "Analyst",
+    desc: "Can view all modules and create/edit own work items. Cannot declare incidents or manage RBAC.",
+    color: "#4299E1",
+    permissions: ["View all modules", "Create own tickets", "Create own tasks", "Run assessments", "Add evidence", "View reports"],
   },
   {
-    role: "viewer", label: "Viewer", desc: "Read-only access across the platform. Can view dashboards, reports, and tickets but cannot create or modify anything.",
-    permissions: ["View Dashboard", "View Threat Intel", "View assessments", "View tickets (read-only)", "View tasks (read-only)", "View reports", "View incident log"],
+    role: "viewer", label: "Viewer",
+    desc: "Read-only access. Can view dashboards, reports, and ticket status but cannot create or modify anything.",
+    color: "#A0AEC0",
+    permissions: ["View Dashboard", "View Threat Intel", "View assessments", "View tickets", "View reports", "View incident log"],
   },
 ];
 
 export function SettingsModule() {
   const { currentUserRole, setCurrentUserRole, themeMode, setThemeMode, org, team } = useStore();
   const colors = useColors();
+  const { mode } = useTheme();
 
   return (
     <div>
-      <SectionHeader sub="Platform preferences, theme, and role-based access control">Settings</SectionHeader>
+      <SectionHeader sub="Platform preferences, appearance, and access control">Settings</SectionHeader>
 
-      {/* Theme */}
-      <Card style={{ marginBottom: 14 }}>
-        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14 }}>Appearance</h3>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {(["dark", "light"] as const).map((mode) => (
-            <button key={mode} onClick={() => setThemeMode(mode)} style={{
-              padding: "10px 20px", borderRadius: 8, cursor: "pointer",
-              border: `2px solid ${themeMode === mode ? colors.teal : colors.panelBorder}`,
-              background: themeMode === mode ? colors.teal + "15" : colors.panel,
-              color: themeMode === mode ? colors.teal : colors.textMuted,
-              fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-              transition: "all 0.15s",
-            }}>
-              <div style={{ fontSize: 20, marginBottom: 4 }}>{mode === "dark" ? "🌙" : "☀️"}</div>
-              {mode === "dark" ? "Dark Mode" : "Light Mode"}
-            </button>
-          ))}
+      {/* Appearance */}
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14, fontWeight: 700 }}>Appearance</h3>
+        <p style={{ color: colors.textMuted, fontSize: 10, marginBottom: 14 }}>Choose your preferred color scheme. Changes apply immediately across the platform.</p>
+        <div style={{ display: "flex", gap: 12 }}>
+          {(["dark", "light"] as const).map((m) => {
+            const isActive = themeMode === m;
+            const previewBg = m === "dark" ? "#080C12" : "#F7F8FA";
+            const previewPanel = m === "dark" ? "#0F1623" : "#FFFFFF";
+            const previewText = m === "dark" ? "#EDF2F7" : "#1A202C";
+            const previewAccent = m === "dark" ? "#00D4C8" : "#0D9488";
+            return (
+              <button
+                key={m}
+                onClick={() => setThemeMode(m)}
+                style={{
+                  flex: 1, padding: 0, borderRadius: 10, cursor: "pointer",
+                  border: `2px solid ${isActive ? colors.teal : colors.panelBorder}`,
+                  background: "transparent",
+                  overflow: "hidden",
+                  boxShadow: isActive ? `0 0 0 3px ${colors.teal}22` : "none",
+                  transition: "all 0.15s",
+                }}
+              >
+                {/* Mini preview */}
+                <div style={{ background: previewBg, padding: "12px 14px", display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  {/* Mini sidebar */}
+                  <div style={{ width: 24, borderRadius: 4, background: previewPanel, padding: "6px 4px", display: "flex", flexDirection: "column", gap: 3 }}>
+                    <div style={{ width: 16, height: 2, background: previewAccent, borderRadius: 1 }} />
+                    <div style={{ width: 12, height: 2, background: previewText + "33", borderRadius: 1 }} />
+                    <div style={{ width: 14, height: 2, background: previewText + "33", borderRadius: 1 }} />
+                  </div>
+                  {/* Mini content */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ width: "60%", height: 3, background: previewText, borderRadius: 1, marginBottom: 4 }} />
+                    <div style={{ width: "100%", height: 12, background: previewPanel, borderRadius: 3, border: `1px solid ${previewText}15` }} />
+                  </div>
+                </div>
+                {/* Label */}
+                <div style={{ padding: "8px 14px", background: isActive ? colors.teal + "10" : colors.panel, borderTop: `1px solid ${colors.panelBorder}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {/* Radio */}
+                    <div style={{
+                      width: 16, height: 16, borderRadius: "50%",
+                      border: `2px solid ${isActive ? colors.teal : colors.panelBorder}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {isActive && <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.teal }} />}
+                    </div>
+                    <span style={{ color: isActive ? colors.teal : colors.textMuted, fontSize: 12, fontWeight: 600 }}>
+                      {m === "dark" ? "Dark" : "Light"}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </Card>
 
-      {/* Current Role */}
-      <Card style={{ marginBottom: 14 }}>
-        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14 }}>Your Access Level</h3>
-        <p style={{ color: colors.textMuted, fontSize: 10, marginBottom: 12 }}>
-          This controls what you can see and do in the platform. In production, this would be assigned by an administrator.
+      {/* Access Level */}
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14, fontWeight: 700 }}>Access Level</h3>
+        <p style={{ color: colors.textMuted, fontSize: 10, marginBottom: 14 }}>
+          Your role determines what you can see and do. In production, roles are assigned by an administrator.
         </p>
-        <Select label="Current Role" value={currentUserRole} onChange={(v) => setCurrentUserRole(v as UserRole)}
-          options={ROLE_DEFS.map((r) => ({ value: r.role, label: `${r.label} — ${r.desc.substring(0, 60)}...` }))} />
-        <div style={{ marginTop: 8 }}>
-          <Badge color={currentUserRole === "admin" ? colors.red : currentUserRole === "manager" ? colors.orange : currentUserRole === "analyst" ? colors.teal : colors.textDim}>
-            {ROLE_DEFS.find((r) => r.role === currentUserRole)?.label}
-          </Badge>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {ROLE_DEFS.map((def) => {
+            const isActive = currentUserRole === def.role;
+            return (
+              <button
+                key={def.role}
+                onClick={() => setCurrentUserRole(def.role)}
+                style={{
+                  padding: "14px 16px", borderRadius: 10, cursor: "pointer",
+                  border: `2px solid ${isActive ? def.color : colors.panelBorder}`,
+                  background: isActive ? def.color + "08" : colors.panel,
+                  textAlign: "left",
+                  transition: "all 0.15s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  {/* Radio */}
+                  <div style={{
+                    width: 16, height: 16, borderRadius: "50%",
+                    border: `2px solid ${isActive ? def.color : colors.panelBorder}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    {isActive && <div style={{ width: 8, height: 8, borderRadius: "50%", background: def.color }} />}
+                  </div>
+                  <span style={{ color: isActive ? def.color : colors.white, fontSize: 12, fontWeight: 700 }}>{def.label}</span>
+                </div>
+                <p style={{ color: colors.textMuted, fontSize: 9, margin: 0, lineHeight: 1.4 }}>{def.desc}</p>
+              </button>
+            );
+          })}
         </div>
       </Card>
 
       {/* RBAC Matrix */}
-      <Card style={{ marginBottom: 14 }}>
-        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14 }}>Role-Based Access Control (RBAC)</h3>
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14, fontWeight: 700 }}>RBAC Permission Matrix</h3>
         <p style={{ color: colors.textMuted, fontSize: 10, marginBottom: 14 }}>
-          Four access tiers from read-only to full administrative control.
+          Four access tiers control what each role can do across the platform.
         </p>
         {ROLE_DEFS.map((def) => {
-          const roleColor = def.role === "admin" ? colors.red : def.role === "manager" ? colors.orange : def.role === "analyst" ? colors.teal : colors.textDim;
           const isActive = currentUserRole === def.role;
           return (
             <div key={def.role} style={{
-              padding: "12px 14px", marginBottom: 8, borderRadius: 8,
-              background: isActive ? roleColor + "10" : colors.obsidianM,
-              border: `1px solid ${isActive ? roleColor + "44" : colors.panelBorder}`,
-              borderLeft: `3px solid ${roleColor}`,
+              padding: "12px 14px", marginBottom: 6, borderRadius: 8,
+              background: isActive ? def.color + "08" : colors.obsidianM,
+              borderLeft: `3px solid ${def.color}`,
+              transition: "all 0.15s",
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Badge color={roleColor}>{def.label}</Badge>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Badge color={def.color}>{def.label}</Badge>
                   {isActive && <Badge color={colors.green}>Active</Badge>}
                 </div>
                 <span style={{ color: colors.textDim, fontSize: 9 }}>
-                  {team.filter((m) => m.role === def.label || (def.role === "admin" && m.role === "Administrator")).length} user{team.filter((m) => m.role === def.label).length !== 1 ? "s" : ""}
+                  Tier {def.role === "admin" ? "1" : def.role === "manager" ? "2" : def.role === "analyst" ? "3" : "4"}
                 </span>
               </div>
-              <p style={{ color: colors.textMuted, fontSize: 10, margin: "0 0 8px", lineHeight: 1.4 }}>{def.desc}</p>
-              <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                {def.permissions.map((p) => <Badge key={p} color={colors.panelBorder}>{p}</Badge>)}
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {def.permissions.map((p) => (
+                  <span key={p} style={{
+                    display: "inline-block", padding: "2px 7px", borderRadius: 4,
+                    background: colors.panelBorder + "44", color: colors.textMuted,
+                    fontSize: 9, fontWeight: 500,
+                  }}>{p}</span>
+                ))}
               </div>
             </div>
           );
@@ -103,20 +183,20 @@ export function SettingsModule() {
 
       {/* Platform Info */}
       <Card>
-        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14 }}>Platform Information</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
+        <h3 style={{ color: colors.white, marginTop: 0, fontSize: 14, fontWeight: 700 }}>Platform</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px" }}>
           {[
-            { l: "Platform", v: "Sentry v3.1.0" },
+            { l: "Version", v: "Sentry v3.1.0" },
             { l: "Developer", v: "Dark Rock Labs" },
             { l: "Organization", v: org.name || "Not configured" },
             { l: "Industry", v: org.industry || "Not configured" },
-            { l: "Theme", v: themeMode === "dark" ? "Dark Mode" : "Light Mode" },
-            { l: "Access Level", v: ROLE_DEFS.find((r) => r.role === currentUserRole)?.label || "—" },
-            { l: "Team Members", v: team.length.toString() },
+            { l: "Theme", v: mode === "dark" ? "Dark" : "Light" },
+            { l: "Role", v: ROLE_DEFS.find((r) => r.role === currentUserRole)?.label || "—" },
+            { l: "Team Size", v: team.length.toString() },
           ].map((x) => (
-            <div key={x.l} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+            <div key={x.l} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
               <span style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600 }}>{x.l}</span>
-              <span style={{ color: colors.text, fontSize: 10 }}>{x.v}</span>
+              <span style={{ color: colors.text, fontSize: 10, fontWeight: 500 }}>{x.v}</span>
             </div>
           ))}
         </div>

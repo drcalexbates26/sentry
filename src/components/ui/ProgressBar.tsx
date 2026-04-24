@@ -27,9 +27,10 @@ export function ProgressBar({ value, max = 100, color, height = 5 }: ProgressBar
         style={{
           width: `${pct}%`,
           height: "100%",
-          background: barColor,
+          background: `linear-gradient(90deg, ${barColor}, ${barColor}DD)`,
           borderRadius: 99,
-          transition: "width 0.3s",
+          transition: "width 0.4s ease",
+          boxShadow: pct > 0 ? `0 0 6px ${barColor}33` : "none",
         }}
       />
     </div>

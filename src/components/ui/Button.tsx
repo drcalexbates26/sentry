@@ -1,6 +1,7 @@
 "use client";
 
 import { useColors } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 
 type Variant = "primary" | "secondary" | "danger" | "ghost" | "outline";
 type Size = "sm" | "md" | "lg";
@@ -16,9 +17,9 @@ interface ButtonProps {
 }
 
 const sizeStyles: Record<Size, React.CSSProperties> = {
-  sm: { fontSize: 10, padding: "4px 11px" },
-  md: { fontSize: 12, padding: "7px 16px" },
-  lg: { fontSize: 14, padding: "12px 22px" },
+  sm: { fontSize: 10, padding: "5px 12px", borderRadius: 6 },
+  md: { fontSize: 12, padding: "8px 18px", borderRadius: 8 },
+  lg: { fontSize: 14, padding: "12px 24px", borderRadius: 8 },
 };
 
 export function Button({
@@ -31,13 +32,34 @@ export function Button({
   style,
 }: ButtonProps) {
   const colors = useColors();
+  const { mode } = useTheme();
 
   const variantStyles: Record<Variant, React.CSSProperties> = {
-    primary: { background: colors.teal, color: "#0A0E14" },
-    secondary: { background: colors.panelLight, color: colors.text, border: `1px solid ${colors.panelBorder}` },
-    danger: { background: colors.red, color: "#fff" },
-    ghost: { background: "transparent", color: colors.teal },
-    outline: { background: "transparent", color: colors.teal, border: `1px solid ${colors.teal}40` },
+    primary: {
+      background: `linear-gradient(135deg, ${colors.teal}, ${colors.tealDark})`,
+      color: mode === "dark" ? "#080C12" : "#FFFFFF",
+      fontWeight: 700,
+      boxShadow: `0 1px 3px ${colors.teal}22`,
+    },
+    secondary: {
+      background: colors.panelLight,
+      color: colors.text,
+      border: `1px solid ${colors.panelBorder}`,
+    },
+    danger: {
+      background: `linear-gradient(135deg, ${colors.red}, #C53030)`,
+      color: "#fff",
+      fontWeight: 700,
+    },
+    ghost: {
+      background: "transparent",
+      color: colors.teal,
+    },
+    outline: {
+      background: "transparent",
+      color: colors.teal,
+      border: `1px solid ${colors.teal}40`,
+    },
   };
 
   return (
@@ -52,9 +74,9 @@ export function Button({
         border: "none",
         fontWeight: 600,
         fontFamily: "inherit",
-        transition: "all 0.12s",
+        transition: "all 0.15s ease",
         opacity: disabled ? 0.35 : 1,
-        borderRadius: 7,
+        letterSpacing: "0.01em",
         ...sizeStyles[size],
         ...variantStyles[variant],
         ...style,
