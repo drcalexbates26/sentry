@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useMemo } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import type { ForensicLogEntry, EvidenceFile } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
@@ -25,6 +25,7 @@ function formatFileSize(bytes: number): string {
 
 export function ForensicsModule() {
   const { forensicLogs, addForensicLog, updateForensicLog, activeIncident, cases, team } = useStore();
+  const colors = useColors();
   const [showNew, setShowNew] = useState(false);
   const [selId, setSelId] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
@@ -14,6 +14,7 @@ export function IncidentLog() {
     incidentLog, tickets, tasks, activeIncident, stakeholders,
     forensicLogs, lessons, setPage,
   } = useStore();
+  const colors = useColors();
 
   const allIncidents = useMemo(() => {
     return incidentLog.map((entry) => {

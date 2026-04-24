@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -8,7 +8,9 @@ interface BadgeProps {
   className?: string;
 }
 
-export function Badge({ children, color = colors.teal, className = "" }: BadgeProps) {
+export function Badge({ children, color, className = "" }: BadgeProps) {
+  const colors = useColors();
+  const c = color || colors.teal;
   return (
     <span
       className={className}
@@ -16,8 +18,8 @@ export function Badge({ children, color = colors.teal, className = "" }: BadgePr
         display: "inline-block",
         padding: "2px 9px",
         borderRadius: 99,
-        background: color + "20",
-        color: color,
+        background: c + "20",
+        color: c,
         fontSize: 10,
         fontWeight: 700,
         letterSpacing: "0.05em",

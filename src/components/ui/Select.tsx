@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface SelectOption {
   value: string;
@@ -15,6 +15,7 @@ interface SelectProps {
 }
 
 export function Select({ label, value, onChange, options }: SelectProps) {
+  const colors = useColors();
   return (
     <div style={{ marginBottom: 12 }}>
       {label && (

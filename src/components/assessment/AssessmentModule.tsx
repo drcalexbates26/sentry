@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, ProgressBar, ScoreGauge, SectionHeader } from "@/components/ui";
 import { CSF2 } from "@/data/csf2-controls";
@@ -11,6 +11,7 @@ import { generateAssessmentReport } from "@/lib/assessment-report-generator";
 
 export function AssessmentModule() {
   const { assessments, addAssessment, org, tech, comp, addTask, forensicLogs } = useStore();
+  const colors = useColors();
   const [mode, setMode] = useState(assessments.length > 0 ? "history" : "new");
   const [ans, setAns] = useState<Record<string, number>>({});
   const [activeFn, setActiveFn] = useState(0);

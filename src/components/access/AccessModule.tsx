@@ -1,12 +1,13 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, SectionHeader, useModal } from "@/components/ui";
 import { ROLES } from "@/data/tech-options";
 
 export function AccessModule() {
   const { team, addTeamMember } = useStore();
+  const colors = useColors();
   const modal = useModal();
 
   return (

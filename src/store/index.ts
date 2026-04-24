@@ -30,12 +30,20 @@ export interface IncidentLogEntry {
   status: "Active" | "Closed";
 }
 
+export type UserRole = "viewer" | "analyst" | "manager" | "admin";
+
 interface AppState {
-  // Navigation
+  // Navigation & UI
   page: string;
   sidebarOpen: boolean;
+  collapsedGroups: Record<string, boolean>;
+  themeMode: "dark" | "light";
+  currentUserRole: UserRole;
   setPage: (page: string) => void;
   setSidebarOpen: (open: boolean) => void;
+  toggleGroup: (groupId: string) => void;
+  setThemeMode: (mode: "dark" | "light") => void;
+  setCurrentUserRole: (role: UserRole) => void;
 
   // Onboarding
   onboardDone: boolean;
@@ -313,8 +321,14 @@ const emptyMetrics = (): MetricPoint[] =>
 export const useStore = create<AppState>((set) => ({
   page: "dash",
   sidebarOpen: true,
+  collapsedGroups: {},
+  themeMode: "dark",
+  currentUserRole: "admin",
   setPage: (page) => set({ page }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  toggleGroup: (groupId) => set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [groupId]: !s.collapsedGroups[groupId] } })),
+  setThemeMode: (themeMode) => set({ themeMode }),
+  setCurrentUserRole: (currentUserRole) => set({ currentUserRole }),
 
   onboardDone: false,
   org: defaultOrg,

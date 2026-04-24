@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
@@ -21,6 +21,7 @@ const defaultInc: Incident = {
 
 export function Commander() {
   const { activeIncident, setActiveIncident, addCase, addTicket, addTickets, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification, tasks, addTasks } = useStore();
+  const colors = useColors();
   const modal = useModal();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);

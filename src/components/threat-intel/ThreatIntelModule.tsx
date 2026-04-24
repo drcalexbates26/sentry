@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ScoreGauge } from "@/components/ui";
 import { GLOBAL_FEEDS, getIndustryFeeds } from "@/lib/threat-intel/feed-config";
@@ -9,7 +9,10 @@ import { generateExecutiveSummary, generateRecommendations } from "@/lib/threat-
 import type { ThreatIntelItem } from "@/types/threat-intel";
 import type { ThreatIntelStoreItem } from "@/store";
 
-const SEV_COLORS: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green, Informational: colors.textDim };
+function useSevColors() {
+  const c = useColors();
+  return { Critical: c.red, High: c.orange, Medium: c.yellow, Low: c.green, Informational: c.textDim } as Record<string, string>;
+}
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -28,6 +31,8 @@ export function ThreatIntelModule() {
     setPage, setActiveIncident, addIncidentLogEntry, recordIncidentMetric,
     tickets,
   } = useStore();
+  const colors = useColors();
+  const SEV_COLORS = useSevColors();
 
   const markApplicable = useCallback((threatItem: ThreatIntelStoreItem & ThreatIntelItem, recommendations: string[]) => {
     const parentId = Math.floor(Math.random() * 1e12);

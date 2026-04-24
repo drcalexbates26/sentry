@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 
 export function TicketsModule() {
   const { tickets, addTicket, updateTicket } = useStore();
+  const colors = useColors();
   const modal = useModal();
   const [sel, setSel] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);

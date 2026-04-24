@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 
@@ -42,6 +42,7 @@ const emptyAAR = (): AARData => ({
 
 export function TabletopModule() {
   const { tabletopExercises, addTabletopExercise, updateTabletopExercise, addTask, addLesson } = useStore();
+  const colors = useColors();
   const modal = useModal();
   const [showNew, setShowNew] = useState(false);
   const [selId, setSelId] = useState<number | null>(null);

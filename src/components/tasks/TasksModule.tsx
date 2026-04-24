@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import type { TaskStatus } from "@/types/task";
 
 const COLS: TaskStatus[] = ["Backlog", "In Progress", "In Review", "Done"];
-const priColors: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green };
 const IR_PHASE_OPTIONS = [{ value: "", label: "None" }, ...IR_PHASES.map((p) => ({ value: p.id, label: `${p.ico} ${p.n}` }))];
 
 export function TasksModule() {
   const { tasks, addTask, updateTask, activeIncident, addTaskWithTicket } = useStore();
+  const colors = useColors();
+  const priColors: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green };
   const modal = useModal();
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "" });

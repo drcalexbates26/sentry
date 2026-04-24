@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface CheckboxProps {
   checked: boolean;
@@ -9,6 +9,7 @@ interface CheckboxProps {
 }
 
 export function Checkbox({ checked, onChange, label }: CheckboxProps) {
+  const colors = useColors();
   return (
     <label
       style={{

@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface InputProps {
   label?: string;
@@ -23,6 +23,7 @@ export function Input({
   rows = 3,
   style,
 }: InputProps) {
+  const colors = useColors();
   const fieldStyle: React.CSSProperties = {
     width: "100%",
     padding: "7px 11px",

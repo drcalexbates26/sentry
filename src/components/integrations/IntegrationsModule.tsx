@@ -1,10 +1,11 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { Badge, Button, Card, SectionHeader, useModal } from "@/components/ui";
 
 export function IntegrationsModule() {
   const modal = useModal();
+  const colors = useColors();
   return (
     <div>
       <SectionHeader sub="Future integrations with your security stack">Integrations</SectionHeader>

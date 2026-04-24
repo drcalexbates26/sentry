@@ -21,6 +21,7 @@ import { PoliciesModule } from "@/components/policies/PoliciesModule";
 import { CommsModule } from "@/components/comms/CommsModule";
 import { AccessModule } from "@/components/access/AccessModule";
 import { IntegrationsModule } from "@/components/integrations/IntegrationsModule";
+import { SettingsModule } from "@/components/settings/SettingsModule";
 
 const modules: Record<string, React.ComponentType> = {
   dash: Dashboard,
@@ -41,6 +42,7 @@ const modules: Record<string, React.ComponentType> = {
   comms: CommsModule,
   access: AccessModule,
   integrations: IntegrationsModule,
+  settings: SettingsModule,
 };
 
 export default function Home() {

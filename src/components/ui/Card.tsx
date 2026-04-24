@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface CardProps {
   children: React.ReactNode;
@@ -10,6 +10,7 @@ interface CardProps {
 }
 
 export function Card({ children, onClick, style, className = "" }: CardProps) {
+  const colors = useColors();
   return (
     <div
       onClick={onClick}

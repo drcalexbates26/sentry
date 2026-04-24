@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
 import { STAKEHOLDER_GROUPS, SYSTEM_CATEGORIES } from "@/data/stakeholder-groups";
@@ -9,6 +9,7 @@ import type { StakeholderPerson, KeySystem } from "@/types/stakeholder";
 
 export function StakeholdersModule() {
   const { stakeholders, updateStakeholders, org } = useStore();
+  const colors = useColors();
   const [editGroup, setEditGroup] = useState<string | null>(null);
   const [editSys, setEditSys] = useState<string | null>(null);
   const [nf, setNf] = useState({ firstName: "", lastName: "", title: "", responsibilities: "", email: "", cell: "" });

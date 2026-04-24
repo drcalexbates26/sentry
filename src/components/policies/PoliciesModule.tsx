@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, SectionHeader } from "@/components/ui";
 import { POLICY_TEMPLATES } from "@/data/policy-templates";
@@ -9,6 +9,7 @@ import { generatePolicy } from "@/lib/policy-generator";
 
 export function PoliciesModule() {
   const { org, tech, comp, addPolicyGen } = useStore();
+  const colors = useColors();
   const [sel, setSel] = useState<string | null>(null);
   const [gen, setGen] = useState<Record<string, string>>({});
 

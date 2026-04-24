@@ -1,3 +1,4 @@
+// Static colors for non-component code (report generators, etc.)
 export const colors = {
   teal: "#00B4A6",
   tealDark: "#009A8E",

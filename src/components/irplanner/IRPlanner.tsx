@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Checkbox, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES, SEV_LEVELS } from "@/data/ir-phases";
 
 export function IRPlanner() {
   const { irData, updateIRData, addTicket, addLesson, addTask, setPage } = useStore();
+  const colors = useColors();
   const modal = useModal();
   const [tab, setTab] = useState("lifecycle");
 

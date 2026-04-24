@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, ProgressBar, ScoreGauge, MiniChart, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
@@ -16,6 +16,7 @@ export function Dashboard() {
     metrics, setPage, addLesson, threatIntelItems,
   } = useStore();
   const modal = useModal();
+  const colors = useColors();
 
   const lastAss = assessments.length ? assessments[assessments.length - 1] : null;
   const openTasks = tasks.filter((t) => t.status !== "Done").length;

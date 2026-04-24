@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface DataPoint {
   l: string;
@@ -13,6 +13,7 @@ interface MiniChartProps {
 }
 
 export function MiniChart({ data, height = 100 }: MiniChartProps) {
+  const colors = useColors();
   const mx = Math.max(...data.map((d) => d.v), 1);
   const bw = 28;
   const gap = 6;

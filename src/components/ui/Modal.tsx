@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface ModalField {
@@ -42,6 +42,7 @@ export function useModal() {
 
 // ─── Provider ───────────────────────────────────────────────────────
 export function ModalProvider({ children }: { children: React.ReactNode }) {
+  const colors = useColors();
   const [config, setConfig] = useState<ModalConfig | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const resolverRef = useRef<ModalResolver | null>(null);

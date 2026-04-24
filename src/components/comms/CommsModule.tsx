@@ -1,9 +1,10 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { Badge, Button, Card, SectionHeader } from "@/components/ui";
 
 export function CommsModule() {
+  const colors = useColors();
   return (
     <div>
       <SectionHeader sub="Out-of-band communication for compromised environments">Secure Communications</SectionHeader>

@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface SectionHeaderProps {
   children: React.ReactNode;
@@ -8,6 +8,7 @@ interface SectionHeaderProps {
 }
 
 export function SectionHeader({ children, sub }: SectionHeaderProps) {
+  const colors = useColors();
   return (
     <div style={{ marginBottom: 18 }}>
       <h2 style={{ color: colors.white, fontSize: 17, fontWeight: 700, margin: 0 }}>{children}</h2>

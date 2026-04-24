@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface ScoreGaugeProps {
   score: number;
@@ -9,6 +9,7 @@ interface ScoreGaugeProps {
 }
 
 export function ScoreGauge({ score, label, size = 110 }: ScoreGaugeProps) {
+  const colors = useColors();
   const cl = score >= 80 ? colors.green : score >= 60 ? colors.yellow : score >= 40 ? colors.orange : colors.red;
   const r = (size - 14) / 2;
   const ci = 2 * Math.PI * r;

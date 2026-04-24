@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 import { PLAYBOOKS } from "@/data/playbooks";
@@ -9,6 +9,7 @@ import { IR_PHASES } from "@/data/ir-phases";
 
 export function PlaybooksModule() {
   const { cases, addCase, addTicket, addTickets, addTasks } = useStore();
+  const colors = useColors();
   const modal = useModal();
   const [sel, setSel] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");

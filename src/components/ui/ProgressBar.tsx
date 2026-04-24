@@ -1,6 +1,6 @@
 "use client";
 
-import { colors } from "@/lib/tokens";
+import { useColors } from "@/lib/theme";
 
 interface ProgressBarProps {
   value: number;
@@ -9,7 +9,9 @@ interface ProgressBarProps {
   height?: number;
 }
 
-export function ProgressBar({ value, max = 100, color = colors.teal, height = 5 }: ProgressBarProps) {
+export function ProgressBar({ value, max = 100, color, height = 5 }: ProgressBarProps) {
+  const colors = useColors();
+  const barColor = color || colors.teal;
   const pct = Math.min((value / max) * 100, 100);
   return (
     <div
@@ -25,7 +27,7 @@ export function ProgressBar({ value, max = 100, color = colors.teal, height = 5 
         style={{
           width: `${pct}%`,
           height: "100%",
-          background: color,
+          background: barColor,
           borderRadius: 99,
           transition: "width 0.3s",
         }}
