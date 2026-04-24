@@ -5,8 +5,11 @@ import { colors } from "@/lib/tokens";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
+import { PLAYBOOKS } from "@/data/playbooks";
 import type { Incident, Deadline } from "@/types/incident";
 import { buildNotification, copyNotification } from "@/lib/notifications";
+
+const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
 
 const defaultInc: Incident = {
   title: "", severity: "High", startTime: "", members: [], phaseStatus: {}, findings: [], summaries: [],
@@ -17,7 +20,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addCase, addTicket, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification } = useStore();
+  const { activeIncident, setActiveIncident, addCase, addTicket, addTickets, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification, tasks, addTasks } = useStore();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
   const [editing, setEditing] = useState(!activeIncident);
   const [elapsed, setElapsed] = useState("");
@@ -25,6 +28,10 @@ export function Commander() {
   const [tab, setTab] = useState("overview");
   const [newFinding, setNewFinding] = useState("");
   const [newIoc, setNewIoc] = useState("");
+  const [selectedPlaybook, setSelectedPlaybook] = useState("");
+  const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
+  const [scopeAddField, setScopeAddField] = useState<"users"|"assets"|"regions"|null>(null);
+  const [scopeAddValue, setScopeAddValue] = useState("");
 
   useEffect(() => {
     if (!inc.startTime || editing) return;
@@ -78,8 +85,31 @@ export function Commander() {
             <Input label="Incident Title *" value={inc.title} onChange={(v) => setInc((p) => ({ ...p, title: v }))} placeholder="Ransomware - Server Farm Alpha" />
             <Select label="Severity *" value={inc.severity} onChange={(v) => setInc((p) => ({ ...p, severity: v as Incident["severity"] }))} options={["Low", "Medium", "High", "Critical"]} />
             <Input label="Start Time *" value={inc.startTime} onChange={(v) => setInc((p) => ({ ...p, startTime: v }))} type="datetime-local" />
+            <Select label="Playbook" value={selectedPlaybook} onChange={setSelectedPlaybook}
+              options={[{ value: "", label: "N/A — No Playbook" }, ...PLAYBOOKS.map((pb) => ({ value: pb.id, label: `${pb.icon} ${pb.name}` }))]} />
             <Input label="Internal Cost Rate ($/hr)" value={inc.internalCostRate?.toString() || "150"} onChange={(v) => setInc((p) => ({ ...p, internalCostRate: parseFloat(v) || 150 }))} type="number" />
           </div>
+          {selectedPlaybook && (() => {
+            const pb = PLAYBOOKS.find((p) => p.id === selectedPlaybook);
+            if (!pb) return null;
+            const totalSteps = pb.iocs.length + pb.contain.length + pb.erad.length + pb.recover.length;
+            return (
+              <Card style={{ marginTop: 8, marginBottom: 8, borderLeft: `3px solid ${colors.purple}`, background: colors.obsidianM }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 14 }}>{pb.icon}</span>
+                  <span style={{ color: colors.white, fontSize: 12, fontWeight: 700 }}>{pb.name}</span>
+                  <Badge color={colors.purple}>{totalSteps} tasks will be created</Badge>
+                </div>
+                <div style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.4 }}>{pb.desc.substring(0, 120)}...</div>
+                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                  <Badge color={colors.red}>IOCs: {pb.iocs.length}</Badge>
+                  <Badge color={colors.orange}>Contain: {pb.contain.length}</Badge>
+                  <Badge color={colors.yellow}>Eradicate: {pb.erad.length}</Badge>
+                  <Badge color={colors.green}>Recover: {pb.recover.length}</Badge>
+                </div>
+              </Card>
+            );
+          })()}
           <Input label="Initial IOCs (one per line)" value={(inc.iocs || []).join("\n")} onChange={(v) => setInc((p) => ({ ...p, iocs: v.split("\n").filter((x) => x.trim()) }))} textarea rows={3} placeholder="Encrypted files with .locked extension" />
           <div style={{ display: "flex", gap: 16, padding: "8px 0" }}>
             <Checkbox checked={inc.privacyConcern} onChange={(v) => setInc((p) => ({ ...p, privacyConcern: v }))} label="Privacy Concern (PII/PHI involved)" />
@@ -120,6 +150,52 @@ export function Commander() {
             // Record in metrics
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             recordIncidentMetric(monthNames[new Date().getMonth()]);
+            // Import playbook tasks if selected
+            if (selectedPlaybook) {
+              const pb = PLAYBOOKS.find((p) => p.id === selectedPlaybook);
+              if (pb) {
+                const incidentId = `INC-${masterTicketId}`;
+                const pbTasks = [
+                  { k: "iocs", l: "IOC Verification", d: pb.iocs },
+                  { k: "contain", l: "Containment", d: pb.contain },
+                  { k: "erad", l: "Eradication", d: pb.erad },
+                  { k: "recover", l: "Recovery", d: pb.recover },
+                ].flatMap((phase) =>
+                  phase.d.map((step, i) => ({
+                    id: masterTicketId + 100 + i + phase.k.charCodeAt(0),
+                    title: `[${phase.l}] ${step}`,
+                    priority: (phase.k === "contain" ? "Critical" : phase.k === "erad" ? "High" : "Medium") as "Critical" | "High" | "Medium",
+                    status: "Backlog" as const,
+                    assignee: "",
+                    updates: [],
+                    created: new Date().toLocaleDateString(),
+                    source: `Playbook: ${pb.name}`,
+                    irPhase: phaseToIR[phase.k] || undefined,
+                    incidentId,
+                  }))
+                );
+                addTasks(pbTasks);
+                // Create child tickets
+                const childTickets = pbTasks.map((t) => ({
+                  id: t.id + 2000000,
+                  title: t.title,
+                  severity: t.priority,
+                  status: "Open",
+                  phase: IR_PHASES.find((p) => p.id === t.irPhase)?.n || "",
+                  assignee: "",
+                  details: `From playbook: ${pb.name}`,
+                  actions: [] as { text: string; by: string; time: string }[],
+                  created: t.created,
+                  parentId: masterTicketId,
+                  incidentId,
+                  incidentTitle: inc.title,
+                  ticketType: "child" as const,
+                }));
+                addTickets(childTickets);
+                // Update master ticket with child IDs
+                updateTicket(masterTicketId, { childIds: childTickets.map((c) => c.id) });
+              }
+            }
             // Send notification
             const notif = buildNotification("incident.declared", {
               what: `Incident "${inc.title}" has been declared at severity ${inc.severity}`,
@@ -223,10 +299,36 @@ export function Commander() {
             </Card>
             <Card>
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Scope</div>
-              {[{ l: "Users", v: inc.affectedUsers }, { l: "Assets", v: inc.affectedAssets }, { l: "Regions", v: inc.affectedRegions }].map((x) => (
-                <div key={x.l} style={{ marginBottom: 6 }}>
-                  <div style={{ color: colors.textDim, fontSize: 8, fontWeight: 600 }}>{x.l} ({x.v.length})</div>
-                  <div style={{ color: colors.text, fontSize: 10 }}>{x.v.join(", ") || "Under assessment"}</div>
+              {([
+                { l: "Affected Users", k: "users" as const, v: inc.affectedUsers, field: "affectedUsers" as const },
+                { l: "Affected Assets", k: "assets" as const, v: inc.affectedAssets, field: "affectedAssets" as const },
+                { l: "Affected Regions", k: "regions" as const, v: inc.affectedRegions, field: "affectedRegions" as const },
+              ]).map((x) => (
+                <div key={x.k} style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                    <div style={{ color: colors.textDim, fontSize: 8, fontWeight: 600 }}>{x.l} ({x.v.length})</div>
+                    <Button variant="ghost" size="sm" style={{ fontSize: 8, padding: "1px 5px" }} onClick={() => setScopeAddField(scopeAddField === x.k ? null : x.k)}>+ Add</Button>
+                  </div>
+                  {scopeAddField === x.k && (
+                    <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                      <Input value={scopeAddValue} onChange={setScopeAddValue} placeholder={`Add ${x.l.toLowerCase().replace("affected ", "")}...`} style={{ marginBottom: 0, flex: 1 }} />
+                      <Button size="sm" onClick={() => {
+                        if (scopeAddValue.trim()) {
+                          setInc((p) => ({ ...p, [x.field]: [...p[x.field], scopeAddValue.trim()] }));
+                          addTL(`Scope: ${x.l} added — ${scopeAddValue.trim()}`);
+                          setScopeAddValue(""); setScopeAddField(null);
+                        }
+                      }}>Add</Button>
+                    </div>
+                  )}
+                  {x.v.length > 0 ? x.v.map((item, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                      <span style={{ color: colors.text, fontSize: 10 }}>{item}</span>
+                      <Button variant="ghost" size="sm" style={{ color: colors.red, fontSize: 7, padding: "0 3px" }} onClick={() => {
+                        setInc((p) => ({ ...p, [x.field]: p[x.field].filter((_, idx) => idx !== i) }));
+                      }}>✕</Button>
+                    </div>
+                  )) : <div style={{ color: colors.textDim, fontSize: 9, fontStyle: "italic" }}>Under assessment</div>}
                 </div>
               ))}
             </Card>
@@ -246,19 +348,62 @@ export function Commander() {
           </Card>
 
           <Card style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Phases</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>IR Phases — Task Progression</div>
+              {(() => {
+                const incTasks = tasks.filter((t) => t.source?.includes("Playbook:") || t.irPhase);
+                const done = incTasks.filter((t) => t.status === "Done").length;
+                const total = incTasks.length;
+                return total > 0 ? <Badge color={done === total ? colors.green : colors.teal}>{done}/{total} complete</Badge> : null;
+              })()}
+            </div>
             {IR_PHASES.map((ph) => {
-              const pct = inc.phaseStatus[ph.id] || 0;
+              const phaseTasks = tasks.filter((t) => t.irPhase === ph.id);
+              const done = phaseTasks.filter((t) => t.status === "Done").length;
+              const total = phaseTasks.length;
+              const pct = total > 0 ? Math.round((done / total) * 100) : (inc.phaseStatus[ph.id] || 0);
               const cl = pct >= 100 ? colors.green : pct > 0 ? colors.teal : colors.textDim;
+              const isExpanded = expandedPhase === ph.id;
               return (
-                <div key={ph.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
-                  <span style={{ fontSize: 9 }}>{ph.ico}</span>
-                  <span style={{ color: colors.text, fontSize: 10, width: 90 }}>{ph.n}</span>
-                  <div style={{ flex: 1 }}><ProgressBar value={pct} color={cl} height={4} /></div>
-                  <input type="range" min="0" max="100" value={pct}
-                    onChange={(e) => { const v = parseInt(e.target.value); setInc((p) => ({ ...p, phaseStatus: { ...p.phaseStatus, [ph.id]: v } })); if (v === 100) addTL(`Phase complete: ${ph.n}`); }}
-                    style={{ width: 45, accentColor: colors.teal }} />
-                  <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 28, textAlign: "right" }}>{pct}%</span>
+                <div key={ph.id}>
+                  <div onClick={() => setExpandedPhase(isExpanded ? null : ph.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}`, cursor: total > 0 ? "pointer" : "default" }}>
+                    <span style={{ fontSize: 9 }}>{ph.ico}</span>
+                    <span style={{ color: colors.text, fontSize: 10, width: 90, fontWeight: isExpanded ? 700 : 400 }}>{ph.n}</span>
+                    <div style={{ flex: 1 }}><ProgressBar value={pct} color={cl} height={4} /></div>
+                    {total > 0 ? (
+                      <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 55, textAlign: "right" }}>{done}/{total} ({pct}%)</span>
+                    ) : (
+                      <>
+                        <input type="range" min="0" max="100" value={pct}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => { const v = parseInt(e.target.value); setInc((p) => ({ ...p, phaseStatus: { ...p.phaseStatus, [ph.id]: v } })); if (v === 100) addTL(`Phase complete: ${ph.n}`); }}
+                          style={{ width: 45, accentColor: colors.teal }} />
+                        <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 28, textAlign: "right" }}>{pct}%</span>
+                      </>
+                    )}
+                  </div>
+                  {/* Expanded task list */}
+                  {isExpanded && total > 0 && (
+                    <div style={{ padding: "6px 0 6px 24px", background: colors.obsidianM, borderRadius: "0 0 6px 6px", marginBottom: 4 }}>
+                      {phaseTasks.map((t) => {
+                        const statusC = t.status === "Done" ? colors.green : t.status === "In Progress" ? colors.teal : t.status === "In Review" ? colors.blue : colors.textDim;
+                        return (
+                          <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ color: t.status === "Done" ? colors.textDim : colors.text, fontSize: 10, textDecoration: t.status === "Done" ? "line-through" : "none" }}>{t.title}</span>
+                              {t.assignee && <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 6 }}>({t.assignee})</span>}
+                            </div>
+                            <select value={t.status} onChange={(e) => {
+                              const { updateTask } = useStore.getState();
+                              updateTask(t.id, { status: e.target.value as "Backlog" | "In Progress" | "In Review" | "Done" });
+                            }} style={{ padding: "2px 5px", background: colors.obsidian, border: `1px solid ${colors.panelBorder}`, borderRadius: 3, color: statusC, fontSize: 8, fontFamily: "inherit" }}>
+                              <option>Backlog</option><option>In Progress</option><option>In Review</option><option>Done</option>
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
