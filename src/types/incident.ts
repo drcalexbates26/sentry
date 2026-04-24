@@ -67,11 +67,22 @@ export interface EscalationEntry {
   p: number;
 }
 
+export interface ExpenseDocument {
+  id: number;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+}
+
 export interface Expense {
   vendor: string;
   amount: number;
   description: string;
   date: string;
+  category: string;
+  stakeholderGroup: string;
+  documents: ExpenseDocument[];
 }
 
 export interface Summary {

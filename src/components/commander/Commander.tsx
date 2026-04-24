@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Checkbox, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
@@ -11,6 +11,11 @@ import { buildNotification, copyNotification } from "@/lib/notifications";
 import { NotificationCenter } from "./NotificationCenter";
 
 const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
+const STAKEHOLDER_LABELS: Record<string, string> = {
+  legalContact: "Legal Counsel", externalLegal: "External Legal", forensicsContact: "Forensic Contact",
+  prContact: "PR / Communications", cyberInsuranceExternal: "Cyber Insurance",
+  hrContacts: "Human Resources", securityEngineers: "Security Engineering", executivePOC: "Executive",
+};
 
 const defaultInc: Incident = {
   title: "", severity: "High", startTime: "", members: [], phaseStatus: {}, findings: [], summaries: [],
@@ -35,6 +40,10 @@ export function Commander() {
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const [scopeAddField, setScopeAddField] = useState<"users"|"assets"|"regions"|null>(null);
   const [scopeAddValue, setScopeAddValue] = useState("");
+  const [expenseFormOpen, setExpenseFormOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ vendor: "", amount: "", description: "", category: "", stakeholderGroup: "" });
+  const [expenseDocs, setExpenseDocs] = useState<{ id: number; name: string; size: number; type: string; uploadedAt: string }[]>([]);
+  const expenseFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!inc.startTime || editing) return;
@@ -511,15 +520,145 @@ export function Commander() {
             ))}
           </div>
           <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>External Expenses</div>
-              <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Expense", [{ key: "vendor", label: "Vendor", required: true, placeholder: "e.g., Dark Rock Cybersecurity" }, { key: "description", label: "Description", placeholder: "Forensics retainer" }, { key: "amount", label: "Amount ($)", type: "number", required: true }]); if (r) { setInc((p) => ({ ...p, expenses: [...p.expenses, { vendor: r.vendor, description: r.description || "", amount: parseFloat(r.amount) || 0, date: new Date().toLocaleDateString() }] })); addTL(`Expense: ${r.vendor} $${r.amount}`); } }}>+ Add</Button>
+              <Button size="sm" onClick={() => setExpenseFormOpen(true)}>+ Add Expense</Button>
             </div>
-            {inc.expenses.length === 0 ? <p style={{ color: colors.textDim, fontSize: 9 }}>No external expenses. Add legal, forensics, PR costs.</p>
+
+            {/* Add Expense Form */}
+            {expenseFormOpen && (
+              <div style={{ background: colors.obsidianM, borderRadius: 8, padding: 14, marginBottom: 12, borderLeft: `3px solid ${colors.orange}` }}>
+                <div style={{ fontSize: 10, color: colors.orange, fontWeight: 700, marginBottom: 10 }}>New Expense</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                  <Input label="Vendor *" value={expenseForm.vendor} onChange={(v) => setExpenseForm((p) => ({ ...p, vendor: v }))} placeholder="Vendor name" />
+                  <Input label="Amount ($) *" value={expenseForm.amount} onChange={(v) => setExpenseForm((p) => ({ ...p, amount: v }))} type="number" placeholder="0.00" />
+                  <Select label="Category *" value={expenseForm.category} onChange={(v) => setExpenseForm((p) => ({ ...p, category: v }))}
+                    options={["Legal Fees", "Forensics", "IR Retainer", "Public Relations", "Insurance Deductible", "Breach Notification", "Credit Monitoring", "Regulatory Fines", "Hardware/Software", "Consulting", "Travel", "Other"]} />
+                  <Select label="Stakeholder Group *" value={expenseForm.stakeholderGroup} onChange={(v) => setExpenseForm((p) => ({ ...p, stakeholderGroup: v }))}
+                    options={[
+                      { value: "legalContact", label: "Legal Counsel" },
+                      { value: "externalLegal", label: "External Legal" },
+                      { value: "forensicsContact", label: "Forensic Contact" },
+                      { value: "prContact", label: "PR / Communications" },
+                      { value: "cyberInsuranceExternal", label: "Cyber Insurance" },
+                      { value: "hrContacts", label: "Human Resources" },
+                      { value: "securityEngineers", label: "Security Engineering" },
+                      { value: "executivePOC", label: "Executive" },
+                    ]} />
+                </div>
+                <Input label="Description" value={expenseForm.description} onChange={(v) => setExpenseForm((p) => ({ ...p, description: v }))} textarea rows={2} placeholder="Description of the expense..." />
+
+                {/* File Upload */}
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: "block", fontSize: 10, color: colors.textMuted, marginBottom: 5, fontWeight: 600, letterSpacing: "0.04em" }}>
+                    Supporting Documentation *
+                  </label>
+                  <div
+                    onClick={() => expenseFileRef.current?.click()}
+                    style={{
+                      border: `2px dashed ${colors.panelBorder}`, borderRadius: 8,
+                      padding: "16px 12px", textAlign: "center", cursor: "pointer",
+                      background: colors.bg, transition: "border-color 0.15s",
+                    }}
+                  >
+                    <input
+                      ref={expenseFileRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.json,.png,.jpg,.jpeg,.msg,.csv"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          const newDocs = Array.from(e.target.files).map((f, idx) => ({
+                            id: Date.now() + idx,
+                            name: f.name,
+                            size: f.size,
+                            type: f.type || f.name.split(".").pop() || "unknown",
+                            uploadedAt: new Date().toLocaleString(),
+                          }));
+                          setExpenseDocs((prev) => [...prev, ...newDocs]);
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                    <div style={{ color: colors.textMuted, fontSize: 11, fontWeight: 500 }}>Click to upload documentation</div>
+                    <div style={{ color: colors.textDim, fontSize: 9, marginTop: 3 }}>PDF, Word, Excel, JSON, PNG, JPG, MSG, CSV</div>
+                  </div>
+                  {expenseDocs.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      {expenseDocs.map((doc) => (
+                        <div key={doc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11 }}>📎</span>
+                            <span style={{ color: colors.text, fontSize: 10, fontWeight: 500 }}>{doc.name}</span>
+                            <span style={{ color: colors.textDim, fontSize: 8 }}>({(doc.size / 1024).toFixed(1)} KB)</span>
+                          </div>
+                          <Button variant="ghost" size="sm" style={{ color: colors.red, padding: "0 4px" }} onClick={() => setExpenseDocs((prev) => prev.filter((d) => d.id !== doc.id))}>✕</Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button onClick={() => {
+                    if (!expenseForm.vendor || !expenseForm.amount || !expenseForm.category || !expenseForm.stakeholderGroup || expenseDocs.length === 0) {
+                      modal.showAlert("Required Fields", "Vendor, amount, category, stakeholder group, and at least one supporting document are required.");
+                      return;
+                    }
+                    setInc((p) => ({
+                      ...p,
+                      expenses: [...p.expenses, {
+                        vendor: expenseForm.vendor,
+                        amount: parseFloat(expenseForm.amount) || 0,
+                        description: expenseForm.description,
+                        date: new Date().toLocaleDateString(),
+                        category: expenseForm.category,
+                        stakeholderGroup: expenseForm.stakeholderGroup,
+                        documents: expenseDocs,
+                      }],
+                    }));
+                    addTL(`Expense: ${expenseForm.vendor} $${expenseForm.amount} (${expenseForm.category})`);
+                    setExpenseForm({ vendor: "", amount: "", description: "", category: "", stakeholderGroup: "" });
+                    setExpenseDocs([]);
+                    setExpenseFormOpen(false);
+                  }}>Submit Expense</Button>
+                  <Button variant="secondary" onClick={() => { setExpenseFormOpen(false); setExpenseDocs([]); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {inc.expenses.length === 0 && !expenseFormOpen ? <p style={{ color: colors.textDim, fontSize: 9 }}>No external expenses. Add legal, forensics, PR costs with supporting documentation.</p>
               : inc.expenses.map((e, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
-                  <div><div style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{e.vendor}</div><div style={{ color: colors.textDim, fontSize: 8 }}>{e.description}</div></div>
-                  <div style={{ textAlign: "right" }}><div style={{ color: colors.orange, fontSize: 10, fontWeight: 700 }}>${e.amount.toLocaleString()}</div><div style={{ color: colors.textDim, fontSize: 7 }}>{e.date}</div></div>
+                <div key={i} style={{ padding: "10px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                        <span style={{ color: colors.white, fontSize: 11, fontWeight: 700 }}>{e.vendor}</span>
+                        <Badge color={colors.orange}>{e.category}</Badge>
+                        <Badge color={colors.blue}>{STAKEHOLDER_LABELS[e.stakeholderGroup] || e.stakeholderGroup}</Badge>
+                      </div>
+                      {e.description && <div style={{ color: colors.textMuted, fontSize: 9, marginBottom: 4 }}>{e.description}</div>}
+                      {e.documents && e.documents.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {e.documents.map((doc) => (
+                            <span key={doc.id} style={{
+                              display: "inline-flex", alignItems: "center", gap: 3,
+                              padding: "2px 7px", borderRadius: 4,
+                              background: colors.obsidianM, color: colors.textMuted,
+                              fontSize: 8,
+                            }}>
+                              📎 {doc.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ color: colors.orange, fontSize: 12, fontWeight: 800 }}>${e.amount.toLocaleString()}</div>
+                      <div style={{ color: colors.textDim, fontSize: 8 }}>{e.date}</div>
+                    </div>
+                  </div>
                 </div>
               ))}
           </Card>
