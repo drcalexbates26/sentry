@@ -148,16 +148,40 @@ export interface IRContact {
   email: string;
 }
 
+export interface TTXParticipant { name: string; title: string; department: string; roleInExercise: string; }
+export interface TTXObjective { id: string; title: string; description: string; rating: "Met" | "Partially Met" | "Not Met"; notes: string; }
+export interface TTXFinding { id: number; finding: string; priority: "Critical" | "High" | "Medium" | "Low"; nistMapping: string; owner: string; status: "Open" | "In Progress" | "Resolved"; notes: string; taskCreated: boolean; }
+export interface TTXLesson { id: number; text: string; impact: string; recommendation: string; addedToDashboard: boolean; }
+export interface TTXActionItem { id: number; text: string; owner: string; priority: "Critical" | "High" | "Medium" | "Low"; dueDate: string; status: "Open" | "In Progress" | "Complete"; taskId?: number; }
+export interface TTXFeedback { id: number; from: string; text: string; rating: number; }
+export interface TTXDocument { id: number; name: string; type: string; addedAt: string; version: string; notes: string; }
+export interface TTXWalkThroughStep { phase: string; stepIndex: number; stepText: string; response: string; gapIdentified: boolean; gapDescription: string; confidence: "High" | "Medium" | "Low" | "Unknown"; }
+
 export interface TabletopExercise {
   id: number;
   title: string;
-  scenario: string;
   date: string;
-  facilitator: string;
-  participants: string;
   status: string;
-  rating: number;
+  exerciseType: string;
+  tlpLevel: string;
+  scenario: string;
+  scope: string;
+  facilitator: string;
+  facilitatorOrg: string;
+  sponsor: string;
+  participants: TTXParticipant[];
+  objectives: TTXObjective[];
+  findings: TTXFinding[];
+  lessonsLearned: TTXLesson[];
+  actionItems: TTXActionItem[];
+  feedback: TTXFeedback[];
+  strengths: string[];
+  documents: TTXDocument[];
   notes: string;
+  rating: number;
+  playbookId: string;
+  walkThroughData: TTXWalkThroughStep[];
+  source: string;
 }
 
 export interface EvidenceFile {
