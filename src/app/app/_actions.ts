@@ -597,6 +597,84 @@ export async function isEmailConfigured(): Promise<boolean> {
   return emailConfigured();
 }
 
+// ─── Pen-test request notification ──────────────────────────────────
+
+const DARK_ROCK_IR_DESK = "IncidentResponse@darkrocklabs.com";
+
+export interface PenTestNotifyInput {
+  testType: string;
+  orgName: string;
+  contactEmail: string;
+  contactName?: string;
+  formData: Record<string, string>;
+  notes?: string;
+  requestId: string | number;
+}
+
+export async function notifyPenTestSubmitted(input: PenTestNotifyInput): Promise<SendNotificationEmailResult> {
+  await requireUser();
+  if (!emailConfigured()) {
+    return { ok: false, reason: "not_configured", error: "Email is not configured." };
+  }
+
+  const lines: string[] = [];
+  lines.push(`PEN TEST REQUEST — ${input.testType}`);
+  lines.push("━".repeat(60));
+  lines.push(`Organization:  ${input.orgName}`);
+  if (input.contactName) lines.push(`Contact:       ${input.contactName}`);
+  lines.push(`Contact email: ${input.contactEmail}`);
+  lines.push(`Request ID:    PT-${input.requestId}`);
+  lines.push(`Submitted:     ${new Date().toLocaleString()}`);
+  lines.push("");
+  lines.push("SCOPE & DETAILS");
+  lines.push("─".repeat(60));
+  for (const [k, v] of Object.entries(input.formData)) {
+    if (!v) continue;
+    lines.push(`${k}:`.padEnd(24) + String(v).slice(0, 200));
+  }
+  if (input.notes) {
+    lines.push("");
+    lines.push("NOTES");
+    lines.push("─".repeat(60));
+    lines.push(input.notes);
+  }
+  lines.push("");
+  lines.push("Reply to the contact above to start scoping. Track in Sentry → Pen Testing.");
+
+  const body = lines.join("\n");
+
+  return sendNotificationEmail({
+    to: [DARK_ROCK_IR_DESK, input.contactEmail].filter(Boolean),
+    subject: `Pen Test Request — ${input.testType} — ${input.orgName}`,
+    body,
+    classification: "Confidential",
+  });
+}
+
+// ─── Assessment report email ────────────────────────────────────────
+
+export interface AssessmentEmailInput {
+  to: string[];
+  orgName: string;
+  date: string;
+  score: number;
+  reportText: string;
+}
+
+export async function emailAssessmentReport(input: AssessmentEmailInput): Promise<SendNotificationEmailResult> {
+  await requireUser();
+  if (!emailConfigured()) return { ok: false, reason: "not_configured", error: "Email is not configured." };
+
+  const subject = `Cyber Resilience Assessment — ${input.orgName} — Score ${input.score}/100`;
+  const body = input.reportText;
+  return sendNotificationEmail({
+    to: input.to,
+    subject,
+    body,
+    classification: "Confidential",
+  });
+}
+
 function renderNotificationHtml(body: string, classification?: string, privileged = false): string {
   const banner = privileged
     ? `<div style="background:#7f1d1d;color:#fef2f2;padding:10px 14px;font-family:Figtree,system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;border-radius:4px 4px 0 0">PRIVILEGED &amp; CONFIDENTIAL — ATTORNEY-CLIENT WORK PRODUCT</div>`

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
-import { Badge, Button, Card, ProgressBar, ScoreGauge, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, ProgressBar, ScoreGauge, SectionHeader, useModal } from "@/components/ui";
 import { CSF2 } from "@/data/csf2-controls";
 import { SCORE_LABELS } from "@/types/assessment";
 import type { Assessment, SmartQuestion } from "@/types/assessment";
@@ -13,6 +13,7 @@ import { HitlistSection } from "./HitlistSection";
 export function AssessmentModule() {
   const { assessments, addAssessment, org, tech, comp, addTask, forensicLogs } = useStore();
   const colors = useColors();
+  const modal = useModal();
   const [mode, setMode] = useState(assessments.length > 0 ? "history" : "new");
   const [ans, setAns] = useState<Record<string, number>>({});
   const [activeFn, setActiveFn] = useState(0);
@@ -81,17 +82,41 @@ export function AssessmentModule() {
               <h2 style={{ color: colors.white, margin: 0, fontSize: 18 }}>{rpt.orgName}</h2>
               <div style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>Assessment Date: {rpt.date} | Framework: NIST CSF 2.0</div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => {
-              const report = generateAssessmentReport({
-                assessment: rpt, csf2: CSF2, org, tech, compliance: comp, forensics: forensicLogs,
-              });
-              const blob = new Blob([report], { type: "text/plain" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${rpt.orgName.replace(/\s/g, "_")}_Cyber_Resilience_Assessment_Report.txt`;
-              a.click();
-            }}>Export Full Report</Button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Button variant="outline" size="sm" onClick={() => {
+                const report = generateAssessmentReport({
+                  assessment: rpt, csf2: CSF2, org, tech, compliance: comp, forensics: forensicLogs,
+                });
+                const blob = new Blob([report], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${rpt.orgName.replace(/\s/g, "_")}_Cyber_Resilience_Assessment_Report.txt`;
+                a.click();
+              }}>Export Full Report</Button>
+              <Button variant="outline" size="sm" onClick={async () => {
+                const r = await modal.showPrompt(
+                  "Email assessment report",
+                  [{ key: "to", label: `Recipients (comma-separated)${org.contactEmail ? ` — try ${org.contactEmail}` : ""}`, required: true, type: "text" }],
+                );
+                if (!r) return;
+                const to = r.to.split(",").map((s) => s.trim()).filter(Boolean);
+                const report = generateAssessmentReport({
+                  assessment: rpt, csf2: CSF2, org, tech, compliance: comp, forensics: forensicLogs,
+                });
+                const { emailAssessmentReport } = await import("@/app/app/_actions");
+                const result = await emailAssessmentReport({
+                  to, orgName: rpt.orgName, date: rpt.date, score: rpt.score, reportText: report,
+                });
+                if (result.ok) {
+                  await modal.showAlert("✓ Sent", `Report emailed to ${result.recipientCount} recipient${result.recipientCount === 1 ? "" : "s"}.`);
+                } else {
+                  await modal.showAlert("Email failed", result.reason === "not_configured"
+                    ? "Email is not configured. Set RESEND_API_KEY + EMAIL_FROM in env to enable."
+                    : `Send failed: ${result.error}`);
+                }
+              }}>✉ Email Report</Button>
+            </div>
           </div>
         </Card>
 
