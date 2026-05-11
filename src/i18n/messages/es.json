@@ -1,0 +1,63 @@
+{
+  "$meta": {
+    "locale": "es",
+    "status": "preview",
+    "lastReviewed": "2026-05-08",
+    "notes": "Machine-translated baseline. Reviewed by native speaker before GA."
+  },
+  "nav": {
+    "modules": "Módulos",
+    "pricing": "Precios",
+    "login": "Iniciar sesión",
+    "requestDemo": "Solicitar una demo",
+    "platform": "Plataforma",
+    "company": "Compañía",
+    "resources": "Recursos"
+  },
+  "marketing": {
+    "heroEyebrow": "Resiliencia cibernética, unificada",
+    "heroTitle": "Una plataforma. Todos los controles. Visibilidad total.",
+    "heroSub": "Sentry reúne exposición, respuesta, gobernanza e IA para que tu equipo de seguridad opere como uno solo.",
+    "ctaPrimary": "Empezar",
+    "ctaSecondary": "Verla en vivo",
+    "trustBar": "Para equipos de seguridad que prefieren detectar incidentes a redactar informes."
+  },
+  "auth": {
+    "signIn": "Inicia sesión en Sentry",
+    "email": "Correo corporativo",
+    "password": "Contraseña",
+    "magicLink": "Envíame un enlace mágico",
+    "useMagicLink": "Usar enlace mágico",
+    "usePassword": "Usar contraseña",
+    "support": "¿Necesitas acceso? Escribe a support@darkrocksecurity.com"
+  },
+  "app": {
+    "loading": "Cargando espacio de trabajo…",
+    "saving": "Guardando…",
+    "saved": "Guardado",
+    "saveFailed": "No se pudo guardar — reintentando"
+  },
+  "common": {
+    "back": "Volver",
+    "next": "Siguiente",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "confirm": "Confirmar",
+    "search": "Buscar"
+  },
+  "legal": {
+    "privacy": "Privacidad",
+    "terms": "Términos",
+    "security": "Seguridad",
+    "dpa": "Acuerdo de tratamiento de datos",
+    "cookies": "Cookies",
+    "copyright": "© Dark Rock Labs"
+  },
+  "cookies": {
+    "title": "Usamos solo cookies mínimas y propias.",
+    "body": "Sentry instala únicamente las cookies necesarias para mantener tu sesión y recordar tus preferencias. Sin rastreadores de terceros.",
+    "accept": "Entendido",
+    "details": "Detalles de cookies"
+  }
+}

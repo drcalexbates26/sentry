@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "screenshots": "node scripts/capture-screenshots.mjs",
-    "test:email": "node scripts/test-email.mjs"
+    "test:email": "node scripts/test-email.mjs",
+    "check:dns": "node scripts/check-dns.mjs",
+    "resend:setup": "node scripts/setup-resend-domain.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

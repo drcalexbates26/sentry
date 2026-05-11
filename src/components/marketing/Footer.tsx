@@ -19,7 +19,7 @@ export function Footer() {
           margin: "0 auto",
           padding: "48px 28px 32px",
           display: "grid",
-          gridTemplateColumns: "1.6fr 1fr 1fr",
+          gridTemplateColumns: "1.6fr 1fr 1fr 1fr",
           gap: 40,
         }}
       >
@@ -50,6 +50,13 @@ export function Footer() {
           { label: "Dark Rock Security", href: "https://darkrocksecurity.com" },
           { label: "Contact", href: "mailto:contact@darkrocksecurity.com" },
           { label: "Talk to us", href: "mailto:contact@darkrocksecurity.com?subject=Sentry%20demo" },
+        ]} />
+
+        <FooterCol title="Trust" links={[
+          { label: "Privacy", href: "/privacy" },
+          { label: "Terms", href: "/terms" },
+          { label: "Security", href: "/security" },
+          { label: "Report a vulnerability", href: "mailto:security@darkrocksecurity.com" },
         ]} />
       </div>
 

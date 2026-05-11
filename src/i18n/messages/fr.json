@@ -1,0 +1,63 @@
+{
+  "$meta": {
+    "locale": "fr",
+    "status": "preview",
+    "lastReviewed": "2026-05-08",
+    "notes": "Machine-translated baseline. Reviewed by native speaker before GA."
+  },
+  "nav": {
+    "modules": "Modules",
+    "pricing": "Tarifs",
+    "login": "Se connecter",
+    "requestDemo": "Demander une démo",
+    "platform": "Plateforme",
+    "company": "Société",
+    "resources": "Ressources"
+  },
+  "marketing": {
+    "heroEyebrow": "Cyber-résilience, unifiée",
+    "heroTitle": "Une plateforme. Tous les contrôles. Une visibilité totale.",
+    "heroSub": "Sentry rassemble l'exposition, la réponse, la gouvernance et l'IA pour que vos équipes sécurité agissent à l'unisson.",
+    "ctaPrimary": "Démarrer",
+    "ctaSecondary": "Voir en direct",
+    "trustBar": "Pour les équipes qui préfèrent détecter les incidents plutôt que rédiger des rapports."
+  },
+  "auth": {
+    "signIn": "Connectez-vous à Sentry",
+    "email": "Adresse professionnelle",
+    "password": "Mot de passe",
+    "magicLink": "M'envoyer un lien magique",
+    "useMagicLink": "Utiliser un lien magique",
+    "usePassword": "Utiliser un mot de passe",
+    "support": "Besoin d'accès ? Écrivez à support@darkrocksecurity.com"
+  },
+  "app": {
+    "loading": "Chargement de l'espace de travail…",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré",
+    "saveFailed": "Échec de l'enregistrement — nouvelle tentative"
+  },
+  "common": {
+    "back": "Retour",
+    "next": "Suivant",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "search": "Rechercher"
+  },
+  "legal": {
+    "privacy": "Confidentialité",
+    "terms": "Conditions",
+    "security": "Sécurité",
+    "dpa": "Contrat de traitement des données",
+    "cookies": "Cookies",
+    "copyright": "© Dark Rock Labs"
+  },
+  "cookies": {
+    "title": "Nous utilisons uniquement des cookies internes minimaux.",
+    "body": "Sentry ne dépose que les cookies nécessaires à votre connexion et à vos préférences. Aucun traceur tiers.",
+    "accept": "Compris",
+    "details": "Détails des cookies"
+  }
+}

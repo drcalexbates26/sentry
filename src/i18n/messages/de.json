@@ -1,0 +1,63 @@
+{
+  "$meta": {
+    "locale": "de",
+    "status": "preview",
+    "lastReviewed": "2026-05-08",
+    "notes": "Machine-translated baseline. Reviewed by native speaker before GA."
+  },
+  "nav": {
+    "modules": "Module",
+    "pricing": "Preise",
+    "login": "Anmelden",
+    "requestDemo": "Demo anfordern",
+    "platform": "Plattform",
+    "company": "Unternehmen",
+    "resources": "Ressourcen"
+  },
+  "marketing": {
+    "heroEyebrow": "Cyber-Resilienz, vereint",
+    "heroTitle": "Eine Plattform. Alle Kontrollen. Volle Sichtbarkeit.",
+    "heroSub": "Sentry vereint Exposure, Response, Governance und KI-Einblicke, damit Security-Teams als Einheit agieren.",
+    "ctaPrimary": "Loslegen",
+    "ctaSecondary": "Live ansehen",
+    "trustBar": "Für Security-Teams, die lieber Vorfälle erkennen als Berichte schreiben."
+  },
+  "auth": {
+    "signIn": "Bei Sentry anmelden",
+    "email": "Geschäftliche E-Mail",
+    "password": "Passwort",
+    "magicLink": "Magic-Link senden",
+    "useMagicLink": "Magic-Link verwenden",
+    "usePassword": "Passwort verwenden",
+    "support": "Zugang benötigt? Schreib an support@darkrocksecurity.com"
+  },
+  "app": {
+    "loading": "Arbeitsbereich wird geladen…",
+    "saving": "Speichern…",
+    "saved": "Gespeichert",
+    "saveFailed": "Speichern fehlgeschlagen — erneuter Versuch"
+  },
+  "common": {
+    "back": "Zurück",
+    "next": "Weiter",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "confirm": "Bestätigen",
+    "search": "Suchen"
+  },
+  "legal": {
+    "privacy": "Datenschutz",
+    "terms": "Nutzungsbedingungen",
+    "security": "Sicherheit",
+    "dpa": "Auftragsverarbeitungsvertrag",
+    "cookies": "Cookies",
+    "copyright": "© Dark Rock Labs"
+  },
+  "cookies": {
+    "title": "Wir setzen ausschließlich minimale Erstanbieter-Cookies.",
+    "body": "Sentry verwendet nur die Cookies, die für deine Anmeldung und Einstellungen nötig sind. Kein Drittanbieter-Tracking.",
+    "accept": "Verstanden",
+    "details": "Cookie-Details"
+  }
+}

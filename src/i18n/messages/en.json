@@ -1,0 +1,62 @@
+{
+  "$meta": {
+    "locale": "en",
+    "status": "ga",
+    "lastReviewed": "2026-05-08"
+  },
+  "nav": {
+    "modules": "Modules",
+    "pricing": "Pricing",
+    "login": "Sign in",
+    "requestDemo": "Request a demo",
+    "platform": "Platform",
+    "company": "Company",
+    "resources": "Resources"
+  },
+  "marketing": {
+    "heroEyebrow": "Cyber-resilience, unified",
+    "heroTitle": "One platform. Every control. Total visibility.",
+    "heroSub": "Sentry brings together exposure, response, governance, and AI insight so security teams operate as one.",
+    "ctaPrimary": "Get started",
+    "ctaSecondary": "See it live",
+    "trustBar": "Trusted by security teams who'd rather catch issues than write reports."
+  },
+  "auth": {
+    "signIn": "Sign in to Sentry",
+    "email": "Work email",
+    "password": "Password",
+    "magicLink": "Email me a magic link",
+    "useMagicLink": "Use a magic link instead",
+    "usePassword": "Use a password instead",
+    "support": "Need access? Email support@darkrocksecurity.com"
+  },
+  "app": {
+    "loading": "Loading workspace…",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "saveFailed": "Couldn't save your changes — retrying"
+  },
+  "common": {
+    "back": "Back",
+    "next": "Next",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "search": "Search"
+  },
+  "legal": {
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "security": "Security",
+    "dpa": "Data Processing Agreement",
+    "cookies": "Cookies",
+    "copyright": "© Dark Rock Labs"
+  },
+  "cookies": {
+    "title": "We use minimal, first-party cookies.",
+    "body": "Sentry sets only the cookies needed to keep you signed in and remember your preferences. No third-party trackers.",
+    "accept": "OK, got it",
+    "details": "Cookie details"
+  }
+}

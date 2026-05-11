@@ -5,6 +5,7 @@ import { Capabilities } from "@/components/marketing/Capabilities";
 import { HowItWorks } from "@/components/marketing/HowItWorks";
 import { ModulesGrid } from "@/components/marketing/ModulesGrid";
 import { Footer } from "@/components/marketing/Footer";
+import { CookieConsent } from "@/components/marketing/CookieConsent";
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://sentry.darkrocklabs.com";
 const TITLE = "Sentry by Dark Rock Labs — Cyber Resilience Platform";
@@ -130,6 +131,7 @@ export default function MarketingHome() {
       <HowItWorks />
       <ModulesGrid />
       <Footer />
+      <CookieConsent />
     </main>
   );
 }
