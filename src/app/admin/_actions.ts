@@ -7,7 +7,58 @@ import { requireSuperAdmin } from "@/lib/auth-helpers";
 import { buildDemoState } from "@/lib/demo-seed";
 import { retry } from "@/lib/retry";
 import { INDUSTRIES, ORG_SIZES, PLANS, STATUSES, ROLES } from "./_constants";
+import { getPlan, type PlanId } from "@/data/plans";
 import type * as runtime from "@prisma/client/runtime/client";
+
+/** Default credential retention window. Short on purpose. */
+const CREDENTIAL_TTL_DAYS = 7;
+function credentialExpiry(): Date {
+  return new Date(Date.now() + CREDENTIAL_TTL_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/** Plan-aware tenant defaults (status, trialEndsAt, seatLimit). */
+function defaultsForPlan(planId: PlanId): { status: "trial" | "active"; trialEndsAt: Date | null; seatLimit: number | null } {
+  const tier = getPlan(planId);
+  const status: "trial" | "active" = planId === "trial" || planId === "demo" ? "trial" : "active";
+  const trialEndsAt = tier.trialDurationDays
+    ? new Date(Date.now() + tier.trialDurationDays * 24 * 60 * 60 * 1000)
+    : null;
+  return { status, trialEndsAt, seatLimit: tier.defaultSeatLimit };
+}
+
+/**
+ * Persist a generated provisioning credential (magic link or temp password)
+ * so super-admins can re-view it from the tenant detail page within the TTL
+ * window. Replaces the old "shown once, lost forever" behavior.
+ */
+async function storeProvisioningCredential(input: {
+  tenantId: string;
+  userId: string | null;
+  userEmail: string;
+  kind: "magiclink" | "password";
+  value: string;
+  source: "tenant_created" | "manual_resend" | "user_added";
+  createdByUserId: string;
+  createdByName: string | null;
+}): Promise<void> {
+  await prisma.provisioningCredential.create({
+    data: {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      userEmail: input.userEmail,
+      kind: input.kind,
+      value: input.value,
+      expiresAt: credentialExpiry(),
+      source: input.source,
+      createdByUserId: input.createdByUserId,
+      createdByName: input.createdByName,
+    },
+  }).catch((err) => {
+    // Storing credentials is best-effort — if it fails, the original flow
+    // still showed them on the success page.
+    console.warn("storeProvisioningCredential failed:", err);
+  });
+}
 
 function slugify(input: string): string {
   return input
@@ -59,6 +110,17 @@ export async function createTenant(_prev: CreateTenantState | null, form: FormDa
   if (!auth.ok) return { ok: false, error: auth.error ?? "Auth provisioning failed" };
 
   const tenantId = `tenant_${slug.replace(/-/g, "_")}_${Math.random().toString(36).slice(2, 6)}`;
+  const planId = plan as PlanId;
+  const tenantDefaults = defaultsForPlan(planId);
+  // Allow the wizard to override seat limit (e.g. enterprise picks a contractual cap).
+  const seatLimitOverride = (() => {
+    const raw = String(form.get("seatLimit") ?? "").trim();
+    if (!raw) return tenantDefaults.seatLimit;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) return tenantDefaults.seatLimit;
+    return n;
+  })();
+
   try {
     await prisma.$transaction([
       prisma.tenant.create({
@@ -66,9 +128,11 @@ export async function createTenant(_prev: CreateTenantState | null, form: FormDa
           id: tenantId,
           name: companyName,
           slug,
-          status: plan === "trial" ? "trial" : "active",
-          plan: plan as typeof PLANS[number],
+          status: tenantDefaults.status,
+          plan: planId,
+          seatLimit: seatLimitOverride,
           isDemoTenant: isDemo,
+          trialEndsAt: tenantDefaults.trialEndsAt,
           contactName: contactName || null,
           contactEmail: contactEmail || null,
           contactPhone: contactPhone || null,
@@ -111,6 +175,26 @@ export async function createTenant(_prev: CreateTenantState | null, form: FormDa
     return { ok: false, error: `Database error: ${(e as Error).message.slice(0, 160)}` };
   }
 
+  // Persist generated credentials so the super-admin can re-view them later.
+  // This is the fix for "credentials vanish on page reload" — caller still
+  // gets them in the return value so the wizard success page shows them
+  // immediately, AND they're retrievable from the tenant detail page.
+  const session = await requireSuperAdmin();
+  if (auth.magicLink) {
+    await storeProvisioningCredential({
+      tenantId, userId: auth.authUserId ?? null, userEmail: adminEmail,
+      kind: "magiclink", value: auth.magicLink, source: "tenant_created",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+  if (auth.password) {
+    await storeProvisioningCredential({
+      tenantId, userId: auth.authUserId ?? null, userEmail: adminEmail,
+      kind: "password", value: auth.password, source: "tenant_created",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+
   revalidatePath("/admin");
   revalidatePath("/admin/tenants");
   return {
@@ -124,7 +208,7 @@ export async function createTenant(_prev: CreateTenantState | null, form: FormDa
 }
 
 export async function provisionUser(tenantId: string, form: FormData): Promise<{ ok: boolean; error?: string; emailSent?: boolean; magicLink?: string; password?: string }> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
   const email = String(form.get("email") || "").trim().toLowerCase();
   const fullName = String(form.get("fullName") || "").trim();
   const role = String(form.get("role") || "viewer");
@@ -133,6 +217,21 @@ export async function provisionUser(tenantId: string, form: FormData): Promise<{
   if (!email) return { ok: false, error: "Email required" };
   if (method === "password" && (!password || password.length < 8)) return { ok: false, error: "Password must be at least 8 chars" };
   if (!ROLES.includes(role as typeof ROLES[number])) return { ok: false, error: "Invalid role" };
+
+  // Block adding past the seat limit. Enterprise (seatLimit=null) is unlimited.
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { seatLimit: true, plan: true },
+  });
+  if (tenant?.seatLimit != null) {
+    const currentSeats = await prisma.user.count({ where: { tenantId, active: true } });
+    if (currentSeats >= tenant.seatLimit) {
+      return {
+        ok: false,
+        error: `Seat limit reached (${currentSeats} of ${tenant.seatLimit}). Upgrade the plan in Plan & Billing or disable an inactive user before adding another.`,
+      };
+    }
+  }
 
   const auth = await provisionAuth(email, fullName, method, password || undefined, false);
   if (!auth.ok) return { ok: false, error: auth.error };
@@ -143,8 +242,204 @@ export async function provisionUser(tenantId: string, form: FormData): Promise<{
     update: { tenantId, role: role as typeof ROLES[number], active: true, fullName: fullName || null, invitedAt: new Date() },
   });
 
+  // Persist generated credentials so the super-admin can re-view them.
+  if (auth.magicLink) {
+    await storeProvisioningCredential({
+      tenantId, userId: auth.authUserId ?? null, userEmail: email,
+      kind: "magiclink", value: auth.magicLink, source: "user_added",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+  if (auth.password) {
+    await storeProvisioningCredential({
+      tenantId, userId: auth.authUserId ?? null, userEmail: email,
+      kind: "password", value: auth.password, source: "user_added",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+
   revalidatePath(`/admin/tenants/${tenantId}`);
   return { ok: true, emailSent: auth.emailSent, magicLink: auth.magicLink, password: auth.password };
+}
+
+// ─── Provisioning credential management ─────────────────────────────
+//
+// Super-admins can re-view the magic links and temporary passwords that
+// were generated for a tenant within a 7-day window. Every reveal is
+// audit-stamped (viewedAt, viewedByUserId, viewedByName).
+
+export interface ProvisioningCredentialDTO {
+  id: string;
+  userEmail: string;
+  kind: "magiclink" | "password";
+  source: string;
+  createdByName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  isExpired: boolean;
+  isInvalidated: boolean;
+  viewedAt: string | null;
+  viewedByName: string | null;
+}
+
+export async function listProvisioningCredentials(tenantId: string): Promise<ProvisioningCredentialDTO[]> {
+  await requireSuperAdmin();
+  const rows = await prisma.provisioningCredential.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  const now = new Date();
+  return rows.map((c) => ({
+    id: c.id,
+    userEmail: c.userEmail,
+    kind: c.kind as "magiclink" | "password",
+    source: c.source,
+    createdByName: c.createdByName,
+    createdAt: c.createdAt.toISOString(),
+    expiresAt: c.expiresAt.toISOString(),
+    isExpired: c.expiresAt < now,
+    isInvalidated: !!c.invalidatedAt,
+    viewedAt: c.viewedAt?.toISOString() ?? null,
+    viewedByName: c.viewedByName,
+  }));
+}
+
+/**
+ * Reveal a stored credential to the requesting super-admin. Stamps the
+ * reveal with timestamp + reviewer for audit. The value is returned only
+ * after the row is updated, so a failed write keeps it hidden.
+ */
+export async function revealProvisioningCredential(credentialId: string): Promise<{ ok: boolean; value?: string; kind?: "magiclink" | "password"; userEmail?: string; error?: string }> {
+  const session = await requireSuperAdmin();
+  const row = await prisma.provisioningCredential.findUnique({ where: { id: credentialId } });
+  if (!row) return { ok: false, error: "Credential not found." };
+  if (row.invalidatedAt) return { ok: false, error: "This credential has been invalidated. Generate a new one." };
+  if (row.expiresAt < new Date()) return { ok: false, error: "This credential has expired. Generate a new one." };
+
+  await prisma.provisioningCredential.update({
+    where: { id: credentialId },
+    data: {
+      viewedAt: new Date(),
+      viewedByUserId: session.authId,
+      viewedByName: session.user!.fullName ?? session.email,
+    },
+  });
+  return { ok: true, value: row.value, kind: row.kind as "magiclink" | "password", userEmail: row.userEmail };
+}
+
+export async function invalidateProvisioningCredential(credentialId: string): Promise<{ ok: boolean; error?: string }> {
+  await requireSuperAdmin();
+  const row = await prisma.provisioningCredential.findUnique({ where: { id: credentialId }, select: { tenantId: true, invalidatedAt: true } });
+  if (!row) return { ok: false, error: "Credential not found." };
+  if (row.invalidatedAt) return { ok: true }; // idempotent
+  await prisma.provisioningCredential.update({
+    where: { id: credentialId },
+    data: { invalidatedAt: new Date() },
+  });
+  revalidatePath(`/admin/tenants/${row.tenantId}`);
+  return { ok: true };
+}
+
+/**
+ * Regenerate a magic-link or password for an existing user. Issues a fresh
+ * credential, stores it for re-view, and returns the new value.
+ */
+export async function regenerateUserCredential(input: { tenantId: string; userId: string; method: AuthMethod; password?: string }): Promise<{ ok: boolean; magicLink?: string; password?: string; emailSent?: boolean; error?: string }> {
+  const session = await requireSuperAdmin();
+  const user = await prisma.user.findFirst({ where: { id: input.userId, tenantId: input.tenantId } });
+  if (!user) return { ok: false, error: "User not found in this tenant." };
+
+  const auth = await provisionAuth(user.email, user.fullName ?? "", input.method, input.password);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  // Invalidate the user's prior active credentials before recording the new one.
+  await prisma.provisioningCredential.updateMany({
+    where: { tenantId: input.tenantId, userId: user.id, invalidatedAt: null, expiresAt: { gt: new Date() } },
+    data: { invalidatedAt: new Date() },
+  });
+  if (auth.magicLink) {
+    await storeProvisioningCredential({
+      tenantId: input.tenantId, userId: user.id, userEmail: user.email,
+      kind: "magiclink", value: auth.magicLink, source: "manual_resend",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+  if (auth.password) {
+    await storeProvisioningCredential({
+      tenantId: input.tenantId, userId: user.id, userEmail: user.email,
+      kind: "password", value: auth.password, source: "manual_resend",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { invitedAt: new Date(), active: true } });
+  revalidatePath(`/admin/tenants/${input.tenantId}`);
+  return { ok: true, magicLink: auth.magicLink, password: auth.password, emailSent: auth.emailSent };
+}
+
+// ─── Plan & seat management ──────────────────────────────────────────
+
+export async function changeTenantPlan(input: { tenantId: string; plan: PlanId; seatLimit?: number | null; trialEndsAt?: string | null }): Promise<{ ok: boolean; error?: string }> {
+  await requireSuperAdmin();
+  if (!PLANS.includes(input.plan as typeof PLANS[number])) return { ok: false, error: "Invalid plan." };
+  const tier = getPlan(input.plan);
+  const seatLimit = input.seatLimit === undefined ? tier.defaultSeatLimit : input.seatLimit;
+  // Validate against current active-user count if a finite limit was chosen.
+  if (seatLimit !== null) {
+    const currentSeats = await prisma.user.count({ where: { tenantId: input.tenantId, active: true } });
+    if (currentSeats > seatLimit) {
+      return { ok: false, error: `Cannot lower seat limit below current active users (${currentSeats}). Disable users first or pick a larger limit.` };
+    }
+  }
+  const trialEndsAt = input.trialEndsAt === undefined
+    ? (tier.trialDurationDays ? new Date(Date.now() + tier.trialDurationDays * 24 * 60 * 60 * 1000) : null)
+    : (input.trialEndsAt ? new Date(input.trialEndsAt) : null);
+  const status: "trial" | "active" = input.plan === "trial" || input.plan === "demo" ? "trial" : "active";
+
+  await prisma.tenant.update({
+    where: { id: input.tenantId },
+    data: { plan: input.plan, seatLimit, trialEndsAt, status },
+  });
+  revalidatePath(`/admin/tenants/${input.tenantId}`);
+  revalidatePath("/admin/tenants");
+  return { ok: true };
+}
+
+export interface TenantMetricsDTO {
+  tenantId: string;
+  plan: PlanId;
+  status: string;
+  seatLimit: number | null;
+  activeSeats: number;
+  totalUsers: number;
+  trialEndsAt: string | null;
+  trialDaysRemaining: number | null;
+}
+
+export async function getTenantMetrics(tenantId: string): Promise<TenantMetricsDTO | null> {
+  await requireSuperAdmin();
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, plan: true, status: true, seatLimit: true, trialEndsAt: true },
+  });
+  if (!tenant) return null;
+  const [activeSeats, totalUsers] = await Promise.all([
+    prisma.user.count({ where: { tenantId, active: true } }),
+    prisma.user.count({ where: { tenantId } }),
+  ]);
+  const trialDaysRemaining = tenant.trialEndsAt
+    ? Math.max(0, Math.ceil((tenant.trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+    : null;
+  return {
+    tenantId: tenant.id,
+    plan: tenant.plan as PlanId,
+    status: tenant.status,
+    seatLimit: tenant.seatLimit,
+    activeSeats,
+    totalUsers,
+    trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
+    trialDaysRemaining,
+  };
 }
 
 export async function deprovisionUser(userId: string, tenantId: string): Promise<{ ok: boolean; error?: string }> {
@@ -542,18 +837,33 @@ async function provisionAuth(email: string, fullName: string, method: AuthMethod
   return { ok: true, authUserId: authId, password: password ?? tempPw };
 }
 
-/** Resends a magic-link email to an existing user. */
+/** Resends a magic-link email to an existing user AND records the new link
+ *  in the provisioning credential store so admins can re-view it. */
 export async function resendInviteEmail(userId: string): Promise<{ ok: boolean; error?: string }> {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false, error: "User not found" };
   const supabase = createServiceRoleClient();
-  const { error } = await supabase.auth.admin.generateLink({
+  const { data, error } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email: user.email,
     options: { redirectTo: `${appBaseUrl()}/auth/callback?next=/app` },
   });
   if (error) return { ok: false, error: error.message };
+
+  // Persist the new link so it's recoverable from the tenant detail page.
+  if (data.properties?.action_link) {
+    // Invalidate any earlier active credentials for this user first.
+    await prisma.provisioningCredential.updateMany({
+      where: { tenantId: user.tenantId, userId, invalidatedAt: null, expiresAt: { gt: new Date() } },
+      data: { invalidatedAt: new Date() },
+    });
+    await storeProvisioningCredential({
+      tenantId: user.tenantId, userId, userEmail: user.email,
+      kind: "magiclink", value: data.properties.action_link, source: "manual_resend",
+      createdByUserId: session.authId, createdByName: session.user!.fullName ?? session.email,
+    });
+  }
   await prisma.user.update({ where: { id: userId }, data: { invitedAt: new Date() } });
   revalidatePath(`/admin/tenants/${user.tenantId}`);
   revalidatePath("/admin/demo");

@@ -2,9 +2,15 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useState, useTransition } from "react";
-import { provisionUser, deprovisionUser, reactivateUser, updateTenantStatus, resendInviteEmail } from "@/app/admin/_actions";
+import { useState, useEffect, useTransition } from "react";
+import {
+  provisionUser, deprovisionUser, reactivateUser, updateTenantStatus, resendInviteEmail,
+  listProvisioningCredentials, revealProvisioningCredential, invalidateProvisioningCredential,
+  regenerateUserCredential, changeTenantPlan,
+  type ProvisioningCredentialDTO,
+} from "@/app/admin/_actions";
 import { ROLES } from "@/app/admin/_constants";
+import { PLAN_TIERS, getPlan, formatPrice, type PlanId } from "@/data/plans";
 
 const colors = {
   text: "#E2E8F0",
@@ -26,7 +32,10 @@ type Tenant = {
   slug: string;
   plan: string;
   status: string;
+  seatLimit: number | null;
+  trialEndsAt: string | null;
   isDemoTenant: boolean;
+  activeSeats: number;
   contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
@@ -47,6 +56,8 @@ type User = {
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
+  { key: "plan", label: "Plan & Billing" },
+  { key: "credentials", label: "Credentials" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -91,7 +102,9 @@ export function TenantTabs({ tenantId, active, tenant, users }: { tenantId: stri
       </nav>
 
       {active === "overview" && <Overview tenant={tenant} />}
-      {active === "users" && <UsersTab tenantId={tenantId} users={users} />}
+      {active === "users" && <UsersTab tenantId={tenantId} tenant={tenant} users={users} />}
+      {active === "plan" && <PlanTab tenantId={tenantId} tenant={tenant} />}
+      {active === "credentials" && <CredentialsTab tenantId={tenantId} users={users} />}
       {active === "settings" && <SettingsTab tenantId={tenantId} tenant={tenant} />}
     </>
   );
@@ -136,7 +149,13 @@ function Overview({ tenant }: { tenant: Tenant }) {
   );
 }
 
-function UsersTab({ tenantId, users }: { tenantId: string; users: User[] }) {
+function UsersTab({ tenantId, tenant, users }: { tenantId: string; tenant: Tenant; users: User[] }) {
+  const seatRemaining = tenant.seatLimit === null ? null : Math.max(0, tenant.seatLimit - tenant.activeSeats);
+  const atLimit = seatRemaining !== null && seatRemaining <= 0;
+  return <UsersTabBody tenantId={tenantId} users={users} atLimit={atLimit} seatRemaining={seatRemaining} seatLimit={tenant.seatLimit} activeSeats={tenant.activeSeats} />;
+}
+
+function UsersTabBody({ tenantId, users, atLimit, seatRemaining, seatLimit, activeSeats }: { tenantId: string; users: User[]; atLimit: boolean; seatRemaining: number | null; seatLimit: number | null; activeSeats: number }) {
   const [showAdd, setShowAdd] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -172,9 +191,9 @@ function UsersTab({ tenantId, users }: { tenantId: string; users: User[] }) {
   }
 
   return (
-    <Card title={`Users (${users.length})`} action={
-      <button onClick={() => { setShowAdd((v) => !v); setSuccess(null); setError(null); }} style={btnPrimary}>
-        {showAdd ? "Cancel" : "+ Provision user"}
+    <Card title={`Users (${users.length} · ${activeSeats}/${seatLimit === null ? "∞" : seatLimit} active)`} action={
+      <button onClick={() => { setShowAdd((v) => !v); setSuccess(null); setError(null); }} style={{ ...btnPrimary, opacity: atLimit ? 0.4 : 1, cursor: atLimit ? "not-allowed" : "pointer" }} disabled={atLimit} title={atLimit ? "Seat limit reached — upgrade plan in Plan & Billing tab" : ""}>
+        {showAdd ? "Cancel" : atLimit ? "Seat limit reached" : "+ Provision user"}
       </button>
     }>
       {showAdd && (
@@ -402,6 +421,270 @@ const btnSecondary: React.CSSProperties = {
   cursor: "pointer",
   fontFamily: "Figtree, sans-serif",
 };
+// ─── PlanTab ──────────────────────────────────────────────────────────
+
+function PlanTab({ tenantId, tenant }: { tenantId: string; tenant: Tenant }) {
+  const tier = getPlan(tenant.plan as PlanId);
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>(tenant.plan as PlanId);
+  const [seatLimit, setSeatLimit] = useState<string>(tenant.seatLimit === null ? "" : String(tenant.seatLimit));
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const seatUsage = tenant.seatLimit === null ? null : Math.round((tenant.activeSeats / tenant.seatLimit) * 100);
+
+  function save() {
+    setError(null); setSuccess(null);
+    const seatLimitN = seatLimit.trim() === "" ? undefined : parseInt(seatLimit, 10);
+    if (seatLimitN !== undefined && (!Number.isFinite(seatLimitN) || seatLimitN <= 0)) {
+      setError("Seat limit must be a positive integer or blank for tier default.");
+      return;
+    }
+    startTransition(async () => {
+      const r = await changeTenantPlan({ tenantId, plan: selectedPlan, seatLimit: seatLimitN ?? null });
+      if (!r.ok) setError(r.error ?? "Failed to change plan.");
+      else setSuccess("Plan updated.");
+    });
+  }
+
+  return (
+    <>
+      <Card title="Current plan">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+          <PlanKV label="Tier" value={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ color: tier.color, fontWeight: 800 }}>{tier.name}</span>
+              <span style={{ color: colors.textMuted, fontSize: 11 }}>· {formatPrice(tier.id)}</span>
+            </span>
+          } />
+          <PlanKV label="Seat usage" value={
+            tenant.seatLimit === null
+              ? <span>{tenant.activeSeats} <span style={{ color: colors.textDim }}>/ unlimited</span></span>
+              : <span style={{ color: tenant.activeSeats > tenant.seatLimit ? colors.red : colors.text }}>
+                  {tenant.activeSeats} <span style={{ color: colors.textDim }}>/ {tenant.seatLimit}</span>
+                  {seatUsage !== null && <span style={{ color: seatUsage > 80 ? colors.orange : colors.textMuted, fontSize: 11, marginLeft: 6 }}>({seatUsage}%)</span>}
+                </span>
+          } />
+          <PlanKV label="Status" value={tenant.status} />
+          <PlanKV label="Trial ends" value={tenant.trialEndsAt ? new Date(tenant.trialEndsAt).toLocaleDateString() : "—"} />
+        </div>
+      </Card>
+
+      <Card title="Change plan or seat limit">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginBottom: 14 }}>
+          {PLAN_TIERS.map((t) => {
+            const active = selectedPlan === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setSelectedPlan(t.id);
+                  setSeatLimit(t.defaultSeatLimit === null ? "" : String(t.defaultSeatLimit));
+                }}
+                style={{
+                  textAlign: "left", padding: 12, borderRadius: 10, fontFamily: "inherit",
+                  background: active ? t.color + "1F" : colors.panelLight,
+                  border: `1px solid ${active ? t.color : colors.panelBorder}`,
+                  color: colors.text, cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                  <span style={{ color: active ? t.color : colors.text, fontSize: 13, fontWeight: 800 }}>{t.name}</span>
+                  <span style={{ color: colors.textMuted, fontSize: 10, fontWeight: 700 }}>{formatPrice(t.id)}</span>
+                </div>
+                <div style={{ color: colors.textDim, fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  {t.seatRange[1] === null ? `${t.seatRange[0]}+ seats` : `${t.seatRange[0]}–${t.seatRange[1]} seats`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>Seat limit (blank = tier default)</label>
+            <input
+              type="number"
+              min={1}
+              value={seatLimit}
+              onChange={(e) => setSeatLimit(e.target.value)}
+              placeholder={getPlan(selectedPlan).defaultSeatLimit === null ? "Unlimited" : String(getPlan(selectedPlan).defaultSeatLimit)}
+              style={input}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button onClick={save} disabled={pending} style={btnPrimary}>
+              {pending ? "Saving…" : "Update plan"}
+            </button>
+          </div>
+        </div>
+
+        {error && <div style={{ marginTop: 10, padding: "10px 12px", background: colors.red + "10", border: `1px solid ${colors.red}55`, borderRadius: 6, color: colors.red, fontSize: 12 }}>{error}</div>}
+        {success && <div style={{ marginTop: 10, padding: "10px 12px", background: colors.green + "10", border: `1px solid ${colors.green}55`, borderRadius: 6, color: colors.green, fontSize: 12 }}>{success}</div>}
+      </Card>
+
+      <Card title={`Tier features — ${tier.name}`}>
+        <ul style={{ margin: 0, paddingLeft: 18, color: colors.textMuted, fontSize: 12, lineHeight: 1.7 }}>
+          {tier.features.map((f) => <li key={f}>{f}</li>)}
+        </ul>
+      </Card>
+    </>
+  );
+}
+
+// ─── CredentialsTab ──────────────────────────────────────────────────
+
+function CredentialsTab({ tenantId, users }: { tenantId: string; users: User[] }) {
+  const [creds, setCreds] = useState<ProvisioningCredentialDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [revealed, setRevealed] = useState<Record<string, { value: string; kind: string }>>({});
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [regenFor, setRegenFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    listProvisioningCredentials(tenantId)
+      .then((rows) => setCreds(rows))
+      .finally(() => setLoading(false));
+  }, [tenantId]);
+
+  function refresh() {
+    listProvisioningCredentials(tenantId).then(setCreds);
+  }
+
+  function reveal(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const r = await revealProvisioningCredential(id);
+      if (!r.ok) { setError(r.error ?? "Failed to reveal."); return; }
+      setRevealed((p) => ({ ...p, [id]: { value: r.value!, kind: r.kind! } }));
+      refresh();
+    });
+  }
+
+  function invalidate(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const r = await invalidateProvisioningCredential(id);
+      if (!r.ok) { setError(r.error ?? "Failed."); return; }
+      setRevealed((p) => { const next = { ...p }; delete next[id]; return next; });
+      refresh();
+    });
+  }
+
+  function regenerate(userId: string, method: "magiclink" | "password") {
+    setError(null);
+    setRegenFor(userId);
+    startTransition(async () => {
+      const r = await regenerateUserCredential({ tenantId, userId, method });
+      setRegenFor(null);
+      if (!r.ok) { setError(r.error ?? "Failed."); return; }
+      refresh();
+    });
+  }
+
+  const active = creds.filter((c) => !c.isExpired && !c.isInvalidated);
+  const inactive = creds.filter((c) => c.isExpired || c.isInvalidated);
+
+  return (
+    <>
+      <Card title={`Active credentials (${active.length})`}>
+        <p style={{ color: colors.textMuted, fontSize: 11, margin: "0 0 12px", lineHeight: 1.5 }}>
+          Magic links and temporary passwords generated for this tenant. Each is revealable until it expires (7 days) or is invalidated. Every reveal is audit-logged.
+        </p>
+
+        {error && <div style={{ padding: "10px 12px", background: colors.red + "10", border: `1px solid ${colors.red}55`, borderRadius: 6, color: colors.red, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+
+        {loading ? (
+          <div style={{ color: colors.textDim, fontSize: 12 }}>Loading…</div>
+        ) : active.length === 0 ? (
+          <div style={{ color: colors.textDim, fontSize: 12, textAlign: "center", padding: "20px 0" }}>
+            No active credentials. Use the table below to regenerate for any user.
+          </div>
+        ) : (
+          active.map((c) => {
+            const rev = revealed[c.id];
+            return (
+              <div key={c.id} style={{ padding: "12px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Tag color={c.kind === "magiclink" ? colors.teal : colors.orange}>
+                        {c.kind === "magiclink" ? "MAGIC LINK" : "TEMP PASSWORD"}
+                      </Tag>
+                      <span style={{ color: colors.text, fontSize: 12, fontWeight: 600 }}>{c.userEmail}</span>
+                      <span style={{ color: colors.textDim, fontSize: 10 }}>· {c.source.replace("_", " ")}</span>
+                    </div>
+                    <div style={{ color: colors.textDim, fontSize: 10, marginTop: 3 }}>
+                      Created {new Date(c.createdAt).toLocaleString()} by {c.createdByName ?? "—"} · expires {new Date(c.expiresAt).toLocaleString()}
+                      {c.viewedAt && <> · last viewed {new Date(c.viewedAt).toLocaleString()} by {c.viewedByName ?? "—"}</>}
+                    </div>
+                    {rev && (
+                      <div style={{ marginTop: 8, padding: 10, background: colors.panelLight, border: `1px solid ${colors.panelBorder}`, borderRadius: 6, fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: colors.tealLight, wordBreak: "break-all" }}>
+                        {rev.value}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {!rev ? (
+                      <button onClick={() => reveal(c.id)} disabled={pending} style={btnSecondary}>Reveal</button>
+                    ) : (
+                      <button onClick={() => { navigator.clipboard.writeText(rev.value); }} style={btnSecondary}>Copy</button>
+                    )}
+                    <button onClick={() => invalidate(c.id)} disabled={pending} style={btnDanger}>Invalidate</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </Card>
+
+      <Card title="Regenerate credentials for a user">
+        <p style={{ color: colors.textMuted, fontSize: 11, margin: "0 0 10px", lineHeight: 1.5 }}>
+          Generate a fresh magic link or temporary password for any user in this tenant. Prior active credentials for that user are invalidated.
+        </p>
+        {users.map((u) => (
+          <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${colors.panelBorder}` }}>
+            <div>
+              <div style={{ color: colors.text, fontSize: 12, fontWeight: 600 }}>{u.fullName ?? u.email}</div>
+              <div style={{ color: colors.textDim, fontSize: 10 }}>{u.email} · {u.role} · {u.active ? "active" : "disabled"}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => regenerate(u.id, "magiclink")} disabled={pending || regenFor === u.id} style={btnSecondary}>
+                {regenFor === u.id ? "…" : "New magic link"}
+              </button>
+              <button onClick={() => regenerate(u.id, "password")} disabled={pending || regenFor === u.id} style={btnSecondary}>
+                {regenFor === u.id ? "…" : "New password"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      {inactive.length > 0 && (
+        <Card title={`History (${inactive.length})`}>
+          {inactive.slice(0, 20).map((c) => (
+            <div key={c.id} style={{ padding: "8px 0", borderBottom: `1px solid ${colors.panelBorder}`, color: colors.textDim, fontSize: 11 }}>
+              <span style={{ color: colors.textMuted }}>{c.kind === "magiclink" ? "Magic link" : "Password"}</span> for {c.userEmail} · {c.isInvalidated ? "invalidated" : "expired"} {new Date(c.expiresAt).toLocaleDateString()}
+            </div>
+          ))}
+        </Card>
+      )}
+    </>
+  );
+}
+
+function PlanKV({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ color: colors.textDim, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+      <div style={{ color: colors.text, fontSize: 13 }}>{value}</div>
+    </div>
+  );
+}
+
 const btnDanger: React.CSSProperties = {
   padding: "8px 16px",
   borderRadius: 8,

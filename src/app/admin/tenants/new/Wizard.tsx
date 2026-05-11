@@ -3,6 +3,7 @@
 import { useActionState, useState, useMemo } from "react";
 import Link from "next/link";
 import { createTenant, type CreateTenantState } from "@/app/admin/_actions";
+import { PLAN_TIERS, getPlan, recommendPlanForSeats, formatPrice, type PlanId } from "@/data/plans";
 
 const colors = {
   text: "#E2E8F0",
@@ -39,7 +40,9 @@ export function OnboardingWizard({ industries, sizes, plans }: { industries: str
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [plan, setPlan] = useState("trial");
+  const [plan, setPlan] = useState<PlanId>("trial");
+  const [expectedSeats, setExpectedSeats] = useState<string>("10");
+  const [seatLimit, setSeatLimit] = useState<string>(""); // empty = use tier default
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState(generatePassword);
@@ -48,6 +51,15 @@ export function OnboardingWizard({ industries, sizes, plans }: { industries: str
   const [showPw, setShowPw] = useState(true);
 
   const computedSlug = useMemo(() => slug || (companyName ? slugify(companyName) : ""), [slug, companyName]);
+
+  // When the admin types an expected-headcount the form auto-recommends a tier
+  // (unless the admin has already picked one manually that fits the range).
+  const recommended = useMemo(() => {
+    const n = parseInt(expectedSeats, 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return recommendPlanForSeats(n);
+  }, [expectedSeats]);
+  const planTier = getPlan(plan);
 
   const canSubmit = companyName.length > 0 && adminEmail.length > 3 && (authMethod !== "password" || adminPassword.length >= 8) && plan;
 
@@ -128,20 +140,92 @@ export function OnboardingWizard({ industries, sizes, plans }: { industries: str
             </Row>
           </Section>
 
-          <Section number="02" title="Plan" sub="Pick the right tier for this engagement.">
+          <Section number="02" title="Plan & seats" sub="Pick the tier this engagement bills against.">
             <Row>
-              <Field label="Plan *">
-                <select name="plan" value={plan} onChange={(e) => setPlan(e.target.value)} style={input} required>
-                  {plans.map((p) => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}
-                </select>
+              <Field label="Expected headcount" hint="Used to pre-select the right tier. You can override below.">
+                <input
+                  type="number"
+                  min={1}
+                  value={expectedSeats}
+                  onChange={(e) => {
+                    setExpectedSeats(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isFinite(n) && n > 0) setPlan(recommendPlanForSeats(n));
+                  }}
+                  placeholder="e.g. 25"
+                  style={input}
+                />
               </Field>
-              <Field label="Demo tenant?" hint="Marks this for resettable demo data.">
-                <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", color: colors.text, fontSize: 13, cursor: "pointer" }}>
-                  <input type="checkbox" name="isDemo" checked={isDemo} onChange={(e) => setIsDemo(e.target.checked)} style={{ accentColor: colors.teal }} />
-                  Treat as demo tenant
-                </label>
+              <Field label="Seat limit override" hint="Leave blank to use tier default. Use a cap below the tier max for contractually-limited deals.">
+                <input
+                  name="seatLimit"
+                  type="number"
+                  min={1}
+                  value={seatLimit}
+                  onChange={(e) => setSeatLimit(e.target.value)}
+                  placeholder={planTier.defaultSeatLimit === null ? "Unlimited (Enterprise)" : `${planTier.defaultSeatLimit}`}
+                  style={input}
+                />
               </Field>
             </Row>
+
+            {/* Tier picker */}
+            <input type="hidden" name="plan" value={plan} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginTop: 6 }}>
+              {PLAN_TIERS.map((t) => {
+                const active = plan === t.id;
+                const isRecommended = recommended === t.id && !active;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setPlan(t.id)}
+                    style={{
+                      textAlign: "left", padding: 14, borderRadius: 10,
+                      background: active ? t.color + "1F" : colors.panelLight,
+                      border: `1px solid ${active ? t.color : colors.panelBorder}`,
+                      color: colors.text, cursor: "pointer", fontFamily: "inherit",
+                      position: "relative",
+                    }}
+                  >
+                    {isRecommended && (
+                      <span style={{
+                        position: "absolute", top: -8, right: 10,
+                        padding: "2px 8px", borderRadius: 999,
+                        background: colors.tealLight, color: "#0A0E14",
+                        fontSize: 9, fontWeight: 800, letterSpacing: "0.06em",
+                      }}>RECOMMENDED</span>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                      <span style={{ color: active ? t.color : colors.text, fontSize: 13, fontWeight: 800 }}>{t.name}</span>
+                      <span style={{ color: colors.textMuted, fontSize: 10, fontWeight: 700 }}>{formatPrice(t.id)}</span>
+                    </div>
+                    <div style={{ color: colors.textMuted, fontSize: 10, marginBottom: 8, lineHeight: 1.4, minHeight: 28 }}>{t.tagline}</div>
+                    <div style={{ color: colors.textDim, fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
+                      {t.seatRange[1] === null ? `${t.seatRange[0]}+ seats` : `${t.seatRange[0]}–${t.seatRange[1]} seats`}
+                      {!t.isBillable && " · non-billable"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tier details */}
+            <div style={{ marginTop: 10, padding: "12px 14px", background: colors.panelLight, borderRadius: 8, borderLeft: `3px solid ${planTier.color}` }}>
+              <div style={{ color: colors.text, fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                {planTier.name} includes
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: colors.textMuted, fontSize: 11, lineHeight: 1.6 }}>
+                {planTier.features.map((f) => <li key={f}>{f}</li>)}
+              </ul>
+            </div>
+
+            <Field label="Demo tenant?" hint="Marks this for resettable demo data. Only meaningful on Demo plan.">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", color: colors.text, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" name="isDemo" checked={isDemo} onChange={(e) => setIsDemo(e.target.checked)} style={{ accentColor: colors.teal }} />
+                Treat as demo tenant
+              </label>
+            </Field>
           </Section>
 
           <Section number="03" title="Initial admin user" sub="How they receive their first sign-in.">
@@ -200,7 +284,15 @@ export function OnboardingWizard({ industries, sizes, plans }: { industries: str
           <div style={{ color: colors.tealLight, fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", marginBottom: 8 }}>READY TO PROVISION</div>
           <Summary label="Company" value={companyName || "—"} />
           <Summary label="Slug" value={computedSlug || "—"} mono />
-          <Summary label="Plan" value={plan ? plan[0].toUpperCase() + plan.slice(1) : "—"} />
+          <Summary label="Plan" value={planTier.name} />
+          <Summary label="Seats" value={
+            seatLimit
+              ? `${seatLimit} (override)`
+              : planTier.defaultSeatLimit === null
+                ? "Unlimited"
+                : `${planTier.defaultSeatLimit}`
+          } />
+          {planTier.trialDurationDays && <Summary label="Trial" value={`${planTier.trialDurationDays} days`} />}
           <Summary label="Demo" value={isDemo ? "Yes" : "No"} />
           <Summary label="Admin" value={adminEmail || "—"} />
 

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { TenantTabs } from "./TenantTabs";
+import { getPlan, type PlanId } from "@/data/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,11 @@ export default async function TenantDetail({
 
   if (!tenant) notFound();
 
+  const activeSeats = tenant.users.filter((u) => u.active).length;
+  const trialDays = tenant.trialEndsAt
+    ? Math.ceil((tenant.trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    : null;
+
   return (
     <>
       <Link href="/admin/tenants" style={{ color: colors.tealLight, fontSize: 12, textDecoration: "none" }}>
@@ -67,10 +73,18 @@ export default async function TenantDetail({
             <span>· created {new Date(tenant.createdAt).toLocaleDateString()}</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <Tag color={planColor(tenant.plan)}>{tenant.plan.toUpperCase()}</Tag>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Tag color={getPlan(tenant.plan as PlanId).color}>{getPlan(tenant.plan as PlanId).name.toUpperCase()}</Tag>
           <Tag color={statusColor(tenant.status)}>{tenant.status.toUpperCase()}</Tag>
-          {tenant.isDemoTenant && <Tag color={colors.tealLight}>DEMO</Tag>}
+          <Tag color={colors.text}>
+            {activeSeats}/{tenant.seatLimit === null ? "∞" : tenant.seatLimit} SEATS
+          </Tag>
+          {trialDays !== null && (
+            <Tag color={trialDays <= 0 ? colors.red : trialDays <= 3 ? colors.orange : colors.tealLight}>
+              {trialDays <= 0 ? "TRIAL EXPIRED" : `TRIAL ${trialDays}D LEFT`}
+            </Tag>
+          )}
+          {tenant.isDemoTenant && <Tag color={colors.orange}>DEMO</Tag>}
         </div>
       </header>
 
@@ -94,11 +108,14 @@ export default async function TenantDetail({
           slug: tenant.slug,
           plan: tenant.plan,
           status: tenant.status,
+          seatLimit: tenant.seatLimit,
+          trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
           isDemoTenant: tenant.isDemoTenant,
           contactName: tenant.contactName,
           contactEmail: tenant.contactEmail,
           contactPhone: tenant.contactPhone,
           createdAt: tenant.createdAt.toISOString(),
+          activeSeats,
           organization: tenant.organization
             ? {
                 industry: tenant.organization.industry,
@@ -138,13 +155,6 @@ function Tag({ children, color }: { children: React.ReactNode; color: string }) 
   );
 }
 
-function planColor(plan: string) {
-  if (plan === "enterprise") return colors.purple;
-  if (plan === "professional") return colors.teal;
-  if (plan === "starter") return colors.tealLight;
-  if (plan === "demo") return colors.orange;
-  return colors.textDim;
-}
 function statusColor(status: string) {
   if (status === "active") return colors.green;
   if (status === "trial") return colors.orange;

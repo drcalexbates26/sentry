@@ -24,11 +24,11 @@ enum TenantStatus {
 }
 
 enum TenantPlan {
-  trial
-  starter
-  professional
-  enterprise
   demo
+  trial
+  starter_ir   // 1–50 seats — core IR-focused stack
+  smb          // 50–500 seats — full platform
+  enterprise   // 500+ seats — unlimited + priority support
 }
 
 model Tenant {
@@ -37,6 +37,8 @@ model Tenant {
   slug          String       @unique
   status        TenantStatus @default(trial)
   plan          TenantPlan   @default(trial)
+  /** Maximum active users this tenant is provisioned for. Null = unlimited (enterprise). */
+  seatLimit     Int?
   isDemoTenant  Boolean      @default(false)
   trialEndsAt   DateTime?
   contactName   String?
@@ -63,6 +65,7 @@ model Tenant {
   notifications IncidentNotification[]
   customPlaybooks CustomPlaybook[]
   accessLogs    AccessActivityLog[]
+  provisioningCredentials ProvisioningCredential[]
 
   @@index([status])
   @@index([isDemoTenant])
@@ -291,6 +294,43 @@ model Policy {
 
   @@unique([tenantId, templateId])
   @@index([tenantId])
+}
+
+// Time-limited storage of provisioning credentials (one-time magic links,
+// initial passwords) generated for tenant users. Super-admins can re-view
+// these from the tenant detail page until they expire or are explicitly
+// invalidated — fixes the "credentials vanish on page reload" problem.
+//
+// SECURITY: stored at-rest in the application DB. The window is
+// intentionally short (7 days default). On view, viewedAt is recorded; on
+// successful first sign-in we invalidate the row. Never log the value.
+model ProvisioningCredential {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /** The user this credential authenticates. Null for invite-link-only flows. */
+  userId        String?
+  userEmail     String
+  /** "magiclink" or "password" — drives the UI presentation. */
+  kind          String
+  /** The secret itself — magic-link URL or temporary password. */
+  value         String   @db.Text
+  /** When auto-expires. Default = now + 7 days at insert time. */
+  expiresAt     DateTime
+  /** Who last revealed this credential. Captured for audit. */
+  viewedByUserId String?
+  viewedByName  String?
+  viewedAt      DateTime?
+  /** Marks the credential as no longer valid (consumed, manually rotated, etc.) */
+  invalidatedAt DateTime?
+  /** Reason for generation: "tenant_created" | "manual_resend" | "user_added" */
+  source        String
+  createdByUserId String
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, userId])
 }
 
 // Per-user acknowledgment that they've read a specific published version.
