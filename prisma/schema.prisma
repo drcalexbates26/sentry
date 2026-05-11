@@ -71,6 +71,9 @@ model User {
   email     String   @unique
   fullName  String?
   role      UserRole @default(viewer)
+  // Fine-grained in-tenant role used by the in-app RBAC matrix (rbac.ts).
+  // Distinct from the prisma `role` enum which is the auth-tier (super_admin / tenant_admin / analyst / viewer).
+  appRole   String   @default("viewer") // admin | manager | analyst | viewer
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   active    Boolean  @default(true)
@@ -214,11 +217,18 @@ model Stakeholder {
   responsibilities String?  @db.Text
   email            String?
   cell             String?
+  // Invite tracking: when an admin promotes a stakeholder to a Sentry user, we link the resulting User here
+  // and capture which fine-grained app role was assigned at invite time.
+  userId           String?
+  invitedAt        DateTime?
+  inviteStatus     String?  // "invited" | "accepted" — null when never invited
+  appRole          String?  // admin | manager | analyst | viewer — recommendation chosen at invite
   tenantId         String
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt        DateTime @default(now())
 
   @@index([tenantId, groupKey])
+  @@index([tenantId, userId])
 }
 
 model KeySystem {

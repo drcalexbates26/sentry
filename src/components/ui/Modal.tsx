@@ -176,7 +176,9 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
               <button onClick={handleSubmit} style={{
                 padding: "7px 16px", borderRadius: 7, border: "none",
                 background: config.variant === "danger" ? colors.red : colors.teal,
-                color: config.variant === "danger" ? "#fff" : colors.obsidian,
+                // Always use white on tinted CTAs — colors.obsidian flips light in
+                // light mode and lands the text inside a low-contrast band.
+                color: "#FFFFFF",
                 fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
               }}>
                 {config.confirmLabel || (config.type === "alert" ? "OK" : config.type === "confirm" ? "Confirm" : "Submit")}

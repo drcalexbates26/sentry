@@ -6,6 +6,11 @@ export interface StakeholderPerson {
   responsibilities: string;
   email: string;
   cell: string;
+  // Invite-state — written by inviteStakeholder server action.
+  userId?: string | null;
+  invitedAt?: string | null;
+  inviteStatus?: "invited" | "accepted" | null;
+  appRole?: "admin" | "manager" | "analyst" | "viewer" | null;
 }
 
 export interface StakeholderGroup {

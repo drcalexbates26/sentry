@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, SectionHeader, useModal } from "@/components/ui";
 import { ROLE_DEFS, PLATFORM_ROLES, getRoleColor } from "@/data/rbac";
 import { STAKEHOLDER_GROUPS } from "@/data/stakeholder-groups";
+import { addTeamMemberAction } from "@/app/app/_actions";
 import type { StakeholderPerson } from "@/types/stakeholder";
+import type { UserRole } from "@/store";
 
 export function AccessModule() {
   const { team, addTeamMember, stakeholders, currentUserRole } = useStore();
@@ -14,8 +16,36 @@ export function AccessModule() {
   const modal = useModal();
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [assignStakeholder, setAssignStakeholder] = useState<string | null>(null);
+  const [inviting, startInvite] = useTransition();
 
   const canManage = currentUserRole === "admin";
+
+  const handleAddMember = async () => {
+    const r = await modal.showPrompt(
+      "Add Team Member",
+      [
+        { key: "name", label: "Full Name", required: true },
+        { key: "email", label: "Email Address", required: true, placeholder: "user@organization.com" },
+        { key: "role", label: "Platform Role", type: "select", options: PLATFORM_ROLES.map((p) => p.label), defaultValue: "Analyst" },
+      ],
+      "The new member will receive a magic-link email to set up their account in this tenant.",
+    );
+    if (!r) return;
+    const role = (ROLE_DEFS.find((d) => d.label === r.role)?.role ?? "analyst") as UserRole;
+    startInvite(async () => {
+      // Optimistic add — server confirms on next state refresh.
+      addTeamMember({ name: r.name, email: r.email, role: r.role || "Analyst", active: true });
+      const res = await addTeamMemberAction({ email: r.email, fullName: r.name, role });
+      if (!res.ok) {
+        await modal.showAlert("Invite failed", res.error);
+        return;
+      }
+      await modal.showAlert(
+        res.alreadyExisted ? "Magic-link resent" : "Invite sent",
+        `${res.email} will receive a sign-in email shortly.`,
+      );
+    });
+  };
 
   return (
     <div>
@@ -26,14 +56,9 @@ export function AccessModule() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h3 style={{ color: colors.white, margin: 0, fontSize: 14, fontWeight: 700 }}>Team Members</h3>
           {canManage && (
-            <Button size="sm" onClick={async () => {
-              const r = await modal.showPrompt("Add Team Member", [
-                { key: "name", label: "Full Name", required: true },
-                { key: "email", label: "Email Address", required: true, placeholder: "user@organization.com" },
-                { key: "role", label: "Platform Role", type: "select", options: PLATFORM_ROLES.map((p) => p.label), defaultValue: "Analyst" },
-              ], "Add a new member to the platform. Their role determines what they can access.");
-              if (r) addTeamMember({ name: r.name, email: r.email, role: r.role || "Analyst", active: true });
-            }}>+ Add Member</Button>
+            <Button size="sm" disabled={inviting} onClick={handleAddMember}>
+              {inviting ? "Sending…" : "+ Add Member"}
+            </Button>
           )}
         </div>
 

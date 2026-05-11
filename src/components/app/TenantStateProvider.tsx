@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store";
+import { darkColors, lightColors } from "@/lib/theme";
 import { loadTenantState, saveTenantState } from "@/app/app/_actions";
 
 // Slices that get persisted. UI prefs (page, sidebarOpen) and transient
@@ -98,13 +99,18 @@ export function TenantStateProvider({
     };
   }, [hydrated]);
 
+  // Pull themeMode straight from the store — the ThemeContext provider lives
+  // inside Shell, so we can't use useColors() up here at the loading screen.
+  const themeMode = useStore((s) => s.themeMode);
+  const palette = themeMode === "light" ? lightColors : darkColors;
+
   if (!hydrated) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0A0E14", display: "flex", alignItems: "center", justifyContent: "center", color: "#94A3B8", fontFamily: "Source Sans 3, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: palette.bg, display: "flex", alignItems: "center", justifyContent: "center", color: palette.textMuted, fontFamily: "Source Sans 3, sans-serif" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", border: "3px solid rgba(0, 180, 166, 0.18)", borderTopColor: "#00B4A6", margin: "0 auto", animation: "tenant-spin 0.9s linear infinite" }} />
-          <div style={{ marginTop: 14, fontSize: 13 }}>Loading {tenantContext.tenantName}…</div>
-          {error && <div style={{ color: "#F87171", marginTop: 10, fontSize: 12 }}>{error}</div>}
+          <div style={{ width: 36, height: 36, borderRadius: "50%", border: `3px solid ${palette.teal}33`, borderTopColor: palette.teal, margin: "0 auto", animation: "tenant-spin 0.9s linear infinite" }} />
+          <div style={{ marginTop: 14, fontSize: 13, color: palette.text }}>Loading {tenantContext.tenantName}…</div>
+          {error && <div style={{ color: palette.red, marginTop: 10, fontSize: 12 }}>{error}</div>}
         </div>
         <style>{`@keyframes tenant-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -141,11 +147,14 @@ function DemoBanner({ tenantName }: { tenantName: string }) {
 }
 
 function SaveIndicator({ state }: { state: "idle" | "saving" | "saved" | "error" }) {
+  const themeMode = useStore((s) => s.themeMode);
+  const palette = themeMode === "light" ? lightColors : darkColors;
   if (state === "idle") return null;
   const { color, label } =
-    state === "saving" ? { color: "#94A3B8", label: "Saving…" } :
-    state === "saved" ? { color: "#22C55E", label: "✓ Saved" } :
-    { color: "#F87171", label: "Save failed" };
+    state === "saving" ? { color: palette.textMuted, label: "Saving…" } :
+    state === "saved" ? { color: palette.green, label: "✓ Saved" } :
+    { color: palette.red, label: "Save failed" };
+  const surfaceBg = themeMode === "light" ? "rgba(255,255,255,0.96)" : "rgba(15, 22, 35, 0.92)";
   return (
     <div
       style={{
@@ -155,7 +164,7 @@ function SaveIndicator({ state }: { state: "idle" | "saving" | "saved" | "error"
         zIndex: 200,
         padding: "6px 12px",
         borderRadius: 6,
-        background: "rgba(15, 22, 35, 0.92)",
+        background: surfaceBg,
         border: `1px solid ${color}55`,
         color,
         fontSize: 11,

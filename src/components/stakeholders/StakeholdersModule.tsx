@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useTransition } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
-import { Badge, Button, Card, Input, Select, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/components/ui";
 import {
   INTERNAL_GROUPS,
   EXTERNAL_GROUPS,
@@ -12,7 +12,11 @@ import {
   VENDOR_CATEGORIES,
   type VendorCategory,
 } from "@/data/stakeholder-groups";
+import { ROLE_DEFS } from "@/data/rbac";
+import { recommendedRoleForGroup } from "@/data/role-recommendations";
+import { inviteStakeholder } from "@/app/app/_actions";
 import type { StakeholderPerson, KeySystem, Vendor } from "@/types/stakeholder";
+import type { UserRole } from "@/store";
 
 type TabKey = "internal" | "external" | "vendors" | "onboarding";
 
@@ -26,9 +30,12 @@ const TABS: { key: TabKey; label: string; desc: string }[] = [
 const READINESS_VENDORS = ["edr", "siem", "identity", "microsoft365", "backup", "dfir", "firewall", "email"];
 
 export function StakeholdersModule() {
-  const { stakeholders, updateStakeholders, org } = useStore();
+  const { stakeholders, updateStakeholders, org, currentUserRole } = useStore();
   const colors = useColors();
+  const modal = useModal();
   const [tab, setTab] = useState<TabKey>("internal");
+  const [inviting, startInvite] = useTransition();
+  const canInvite = currentUserRole === "admin";
 
   const totals = useMemo(() => {
     const internal = INTERNAL_GROUPS.reduce(
@@ -43,6 +50,50 @@ export function StakeholdersModule() {
     const systems = (stakeholders.keySystems || []).length;
     return { internal, external, vendors, systems, contacts: internal + external };
   }, [stakeholders]);
+
+  const handleInvite = async (p: StakeholderPerson, groupKey: string) => {
+    const rec = recommendedRoleForGroup(groupKey);
+    const roleLabel = (r: UserRole) => ROLE_DEFS.find((d) => d.role === r)?.label ?? r;
+    const result = await modal.showPrompt(
+      `Invite ${p.firstName} ${p.lastName} to Sentry`,
+      [
+        { key: "email", label: "Email address", required: true, defaultValue: p.email || "" },
+        {
+          key: "role",
+          label: "Platform role",
+          type: "select",
+          options: ROLE_DEFS.map((r) => r.label),
+          defaultValue: roleLabel(rec.role),
+        },
+      ],
+      `${rec.rationale}\n\nThe invitee will receive a magic-link email and land in your tenant after signing in.`,
+    );
+    if (!result) return;
+
+    const selectedLabel = result.role || roleLabel(rec.role);
+    const role = (ROLE_DEFS.find((r) => r.label === selectedLabel)?.role ?? rec.role) as UserRole;
+    startInvite(async () => {
+      const res = await inviteStakeholder({ stakeholderId: p.id, role });
+      if (!res.ok) {
+        await modal.showAlert("Invite failed", res.error);
+        return;
+      }
+      // Reflect the invite locally so the badge shows immediately (server-side
+      // load on next fetch will confirm).
+      updateStakeholders((prev) => ({
+        ...prev,
+        [groupKey]: (prev[groupKey] as StakeholderPerson[]).map((x) =>
+          x.id === p.id
+            ? { ...x, userId: res.userId, invitedAt: new Date().toISOString(), inviteStatus: "invited", appRole: role }
+            : x,
+        ),
+      }));
+      await modal.showAlert(
+        res.alreadyExisted ? "Magic-link resent" : "Invite sent",
+        `${res.email} should receive a sign-in email shortly.`,
+      );
+    });
+  };
 
   const exportDirectory = () => {
     let txt = `DARK ROCK LABS SENTRY\nSTAKEHOLDER DIRECTORY\n${"═".repeat(60)}\nOrganization: ${org?.name || "[Organization]"}\nGenerated: ${new Date().toLocaleString()}\n\n`;
@@ -229,30 +280,51 @@ export function StakeholdersModule() {
             {editing ? "Close" : "+ Add"}
           </Button>
         </div>
-        {people.map((p) => (
-          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 0", borderTop: `1px solid ${colors.panelBorder}` }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <span style={{ color: colors.white, fontSize: 12, fontWeight: 700 }}>{p.firstName} {p.lastName}</span>
-                {p.title && <Badge color={group.color}>{p.title}</Badge>}
+        {people.map((p) => {
+          const invited = p.inviteStatus === "invited" || p.inviteStatus === "accepted";
+          return (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 0", borderTop: `1px solid ${colors.panelBorder}` }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                  <span style={{ color: colors.white, fontSize: 12, fontWeight: 700 }}>{p.firstName} {p.lastName}</span>
+                  {p.title && <Badge color={group.color}>{p.title}</Badge>}
+                  {invited && (
+                    <Badge color={colors.teal}>
+                      {p.inviteStatus === "accepted" ? "✓ Joined" : "✉ Invited"}
+                      {p.appRole ? ` · ${p.appRole}` : ""}
+                    </Badge>
+                  )}
+                </div>
+                {p.responsibilities && <div style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>{p.responsibilities}</div>}
+                <div style={{ display: "flex", gap: 14 }}>
+                  {p.email && <span style={{ color: colors.text, fontSize: 10 }}>{p.email}</span>}
+                  {p.cell && <span style={{ color: colors.text, fontSize: 10 }}>{p.cell}</span>}
+                </div>
               </div>
-              {p.responsibilities && <div style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>{p.responsibilities}</div>}
-              <div style={{ display: "flex", gap: 14 }}>
-                {p.email && <span style={{ color: colors.text, fontSize: 10 }}>{p.email}</span>}
-                {p.cell && <span style={{ color: colors.text, fontSize: 10 }}>{p.cell}</span>}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {p.email && canInvite && (
+                  <Button
+                    variant={invited ? "ghost" : "outline"}
+                    size="sm"
+                    disabled={inviting}
+                    onClick={() => handleInvite(p, group.key)}
+                  >
+                    {invited ? "Resend" : "Invite to Sentry"}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => updateStakeholders((prev) => ({
+                    ...prev,
+                    [group.key]: (prev[group.key] as StakeholderPerson[]).filter((x) => x.id !== p.id),
+                  }))}
+                  style={{ color: colors.red }}
+                >✕</Button>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => updateStakeholders((prev) => ({
-                ...prev,
-                [group.key]: (prev[group.key] as StakeholderPerson[]).filter((x) => x.id !== p.id),
-              }))}
-              style={{ color: colors.red }}
-            >✕</Button>
-          </div>
-        ))}
+          );
+        })}
         {editing && (
           <div style={{ background: colors.obsidianM, borderRadius: 7, padding: 14, marginTop: 8, borderTop: `1px solid ${colors.panelBorder}` }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>

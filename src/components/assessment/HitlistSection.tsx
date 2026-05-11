@@ -163,19 +163,23 @@ function HitlistRow({ item, accent, onCreateTask }: { item: HitlistItem; accent:
 }
 
 function Section({ label, color, children }: { label: string; color: string; children: React.ReactNode }) {
+  const colors = useColors();
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ color, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", marginBottom: 4 }}>{label}</div>
-      <div style={{ color: "#E2E8F0", fontSize: 12.5, lineHeight: 1.6 }}>{children}</div>
+      <div style={{ color: colors.text, fontSize: 12.5, lineHeight: 1.6 }}>{children}</div>
     </div>
   );
 }
 
 function Stat({ label, value, suffix, color }: { label: string; value: number | string; suffix?: string; color: string }) {
+  const colors = useColors();
+  const tileBg = `${colors.text}08`;
+  const tileBorder = `${colors.text}14`;
   return (
-    <div style={{ minWidth: 70, padding: "8px 12px", borderRadius: 8, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)", textAlign: "center" }}>
+    <div style={{ minWidth: 70, padding: "8px 12px", borderRadius: 8, background: tileBg, border: `1px solid ${tileBorder}`, textAlign: "center" }}>
       <div style={{ color, fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{value}{suffix ?? ""}</div>
-      <div style={{ color: "#94A3B8", fontSize: 9, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 4 }}>{label}</div>
+      <div style={{ color: colors.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 4 }}>{label}</div>
     </div>
   );
 }

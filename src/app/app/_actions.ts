@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth-helpers";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { retry } from "@/lib/retry";
+import { appRoleToPrismaRole, recommendedRoleForGroup } from "@/data/role-recommendations";
+import type { UserRole } from "@/store";
 import type * as runtime from "@prisma/client/runtime/client";
 
 export type StateBlob = Record<string, unknown>;
@@ -17,6 +20,12 @@ interface AssessmentRow {
 interface PersonRow {
   id: number; firstName: string; lastName: string;
   title?: string; responsibilities?: string; email?: string; cell?: string;
+  // Invite-state fields: written by inviteStakeholder(), read by the UI to
+  // show invite status badges. Client-side edits never touch these directly.
+  userId?: string | null;
+  invitedAt?: string | null;
+  inviteStatus?: string | null;
+  appRole?: string | null;
 }
 interface KeySystemRow {
   id: number; systemName: string; category: string; criticality: string;
@@ -106,6 +115,10 @@ export async function loadTenantState(): Promise<StateBlob | null> {
       firstName: r.firstName, lastName: r.lastName,
       title: r.title ?? "", responsibilities: r.responsibilities ?? "",
       email: r.email ?? "", cell: r.cell ?? "",
+      userId: r.userId ?? null,
+      invitedAt: r.invitedAt?.toISOString() ?? null,
+      inviteStatus: r.inviteStatus ?? null,
+      appRole: r.appRole ?? null,
     });
   }
   stakeholders.keySystems = keySystemRows.map<KeySystemRow>((r) => ({
@@ -312,13 +325,23 @@ async function syncStakeholdersTo(tenantId: string, groups: Record<string, Perso
   });
   await Promise.all(flat.map((p) => {
     const id = String(p.id);
-    const data = {
-      tenantId, groupKey: p.groupKey,
+    // `update` intentionally omits invite-tracking fields so client-driven
+    // edits (firstName, email, etc.) cannot clobber a previously-issued invite.
+    // Only inviteStakeholder() writes those columns.
+    const updateData = {
+      groupKey: p.groupKey,
       firstName: p.firstName, lastName: p.lastName,
       title: p.title || null, responsibilities: p.responsibilities || null,
       email: p.email || null, cell: p.cell || null,
     };
-    return prisma.stakeholder.upsert({ where: { id }, create: { id, ...data }, update: data });
+    const createData = {
+      ...updateData, tenantId,
+      userId: p.userId ?? null,
+      invitedAt: p.invitedAt ? new Date(p.invitedAt) : null,
+      inviteStatus: p.inviteStatus ?? null,
+      appRole: p.appRole ?? null,
+    };
+    return prisma.stakeholder.upsert({ where: { id }, create: { id, ...createData }, update: updateData });
   }));
 }
 
@@ -767,6 +790,195 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// ─── Stakeholder → Sentry invite ─────────────────────────────────────
+//
+// Sends an invite email via Supabase Auth, creates a User row in the
+// active tenant, and links the resulting userId back onto the Stakeholder.
+// Idempotent: re-inviting an already-invited stakeholder resends the magic-link.
+
+export interface InviteStakeholderInput {
+  stakeholderId: string | number;
+  /** Override the recommendation if the admin wants a different role. */
+  role?: UserRole;
+}
+
+export type InviteStakeholderResult =
+  | { ok: true; userId: string; email: string; alreadyExisted: boolean }
+  | { ok: false; error: string };
+
+export async function inviteStakeholder(input: InviteStakeholderInput): Promise<InviteStakeholderResult> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+
+  // Only tenant admins and super_admins can invite stakeholders.
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can invite stakeholders." };
+  }
+
+  const stakeholderIdStr = String(input.stakeholderId);
+  const stakeholder = await prisma.stakeholder.findFirst({
+    where: { id: stakeholderIdStr, tenantId },
+  });
+  if (!stakeholder) return { ok: false, error: "Stakeholder not found." };
+  if (!stakeholder.email) return { ok: false, error: "Stakeholder has no email address. Add one before inviting." };
+
+  // Decide role: caller override first, then stakeholder's stored role, then recommendation.
+  const appRole: UserRole = input.role ?? (stakeholder.appRole as UserRole | null) ?? recommendedRoleForGroup(stakeholder.groupKey).role;
+  const prismaRole = appRoleToPrismaRole(appRole);
+  const fullName = `${stakeholder.firstName} ${stakeholder.lastName}`.trim();
+  const email = stakeholder.email.toLowerCase();
+  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000"}/auth/callback?next=/app`;
+
+  const supabase = createServiceRoleClient();
+
+  // Find or create auth user
+  let authUserId: string;
+  let alreadyExisted = false;
+  try {
+    const { data: existing } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const found = existing?.users.find((u) => u.email?.toLowerCase() === email);
+    if (found) {
+      authUserId = found.id;
+      alreadyExisted = true;
+      await retry(async () => {
+        const { error } = await supabase.auth.admin.generateLink({
+          type: "magiclink", email, options: { redirectTo },
+        });
+        if (error) throw Object.assign(new Error(error.message), { status: error.status });
+      });
+    } else {
+      const created = await retry(async () => {
+        const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+          data: { full_name: fullName, invited_as: appRole, source: "stakeholder" },
+          redirectTo,
+        });
+        if (error || !data.user) throw Object.assign(new Error(error?.message ?? "createUser failed"), { status: error?.status });
+        return data.user.id;
+      });
+      authUserId = created;
+    }
+  } catch (err) {
+    return { ok: false, error: `Failed to send invite email: ${(err as Error).message}` };
+  }
+
+  // Upsert the User row in this tenant
+  const existingUser = await prisma.user.findUnique({ where: { id: authUserId } });
+  if (existingUser) {
+    if (existingUser.tenantId !== tenantId) {
+      return { ok: false, error: "This email is already a Sentry user in another tenant. Contact support to transfer." };
+    }
+    await prisma.user.update({
+      where: { id: authUserId },
+      data: { fullName: fullName || existingUser.fullName, role: prismaRole, appRole, invitedAt: new Date() },
+    });
+  } else {
+    await prisma.user.create({
+      data: {
+        id: authUserId,
+        email,
+        fullName: fullName || null,
+        role: prismaRole,
+        appRole,
+        tenantId,
+        invitedBy: session.authId,
+        invitedAt: new Date(),
+      },
+    });
+  }
+
+  // Link back onto the Stakeholder row
+  await prisma.stakeholder.update({
+    where: { id: stakeholderIdStr },
+    data: { userId: authUserId, invitedAt: new Date(), inviteStatus: "invited", appRole },
+  });
+
+  revalidatePath("/app");
+  return { ok: true, userId: authUserId, email, alreadyExisted };
+}
+
+// ─── Add team member directly (Access Module) ────────────────────────
+//
+// Sister action to inviteStakeholder, but for users added via the Access
+// Module's "Add Team Member" flow (no underlying Stakeholder row).
+
+export interface AddTeamMemberInput {
+  email: string;
+  fullName: string;
+  role: UserRole;
+}
+
+export async function addTeamMemberAction(input: AddTeamMemberInput): Promise<InviteStakeholderResult> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can add team members." };
+  }
+  const email = input.email.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+
+  const prismaRole = appRoleToPrismaRole(input.role);
+  const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000"}/auth/callback?next=/app`;
+  const supabase = createServiceRoleClient();
+
+  let authUserId: string;
+  let alreadyExisted = false;
+  try {
+    const { data: existing } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const found = existing?.users.find((u) => u.email?.toLowerCase() === email);
+    if (found) {
+      authUserId = found.id;
+      alreadyExisted = true;
+      await retry(async () => {
+        const { error } = await supabase.auth.admin.generateLink({
+          type: "magiclink", email, options: { redirectTo },
+        });
+        if (error) throw Object.assign(new Error(error.message), { status: error.status });
+      });
+    } else {
+      const created = await retry(async () => {
+        const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+          data: { full_name: input.fullName, invited_as: input.role, source: "team" },
+          redirectTo,
+        });
+        if (error || !data.user) throw Object.assign(new Error(error?.message ?? "createUser failed"), { status: error?.status });
+        return data.user.id;
+      });
+      authUserId = created;
+    }
+  } catch (err) {
+    return { ok: false, error: `Failed to send invite email: ${(err as Error).message}` };
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { id: authUserId } });
+  if (existingUser) {
+    if (existingUser.tenantId !== tenantId) {
+      return { ok: false, error: "This email is already a Sentry user in another tenant." };
+    }
+    await prisma.user.update({
+      where: { id: authUserId },
+      data: { fullName: input.fullName || existingUser.fullName, role: prismaRole, appRole: input.role, invitedAt: new Date() },
+    });
+  } else {
+    await prisma.user.create({
+      data: {
+        id: authUserId, email,
+        fullName: input.fullName || null,
+        role: prismaRole, appRole: input.role,
+        tenantId,
+        invitedBy: session.authId,
+        invitedAt: new Date(),
+      },
+    });
+  }
+
+  revalidatePath("/app");
+  return { ok: true, userId: authUserId, email, alreadyExisted };
 }
 
 export async function clearTenantState(): Promise<{ ok: boolean }> {
