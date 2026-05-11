@@ -7,12 +7,25 @@ import { Badge, Button, Card, Input, Select, SectionHeader, useModal } from "@/c
 import { IR_PHASES } from "@/data/ir-phases";
 
 export function TicketsModule() {
-  const { tickets, addTicket, updateTicket } = useStore();
+  const { tickets, addTicket, updateTicket, deleteTicket } = useStore();
   const colors = useColors();
   const modal = useModal();
   const [sel, setSel] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", severity: "Medium", phase: "", assignee: "", details: "" });
+
+  const handleDelete = async (id: number, label: string, childCount: number) => {
+    const ok = await modal.showConfirm(
+      childCount > 0 ? `Delete this master ticket and ${childCount} sub-ticket${childCount === 1 ? "" : "s"}?` : "Delete this ticket?",
+      childCount > 0
+        ? `"${label}" and every sub-ticket beneath it will be permanently removed. This cannot be undone.`
+        : `"${label}" will be permanently removed. This cannot be undone.`,
+      "danger",
+    );
+    if (!ok) return;
+    deleteTicket(id);
+    setSel(null);
+  };
 
   if (sel !== null) {
     const tk = tickets.find((t) => t.id === sel);
@@ -47,6 +60,12 @@ export function TicketsModule() {
                 }
                 updateTicket(tk.id, { status: v });
               }} options={["Open", "In Progress", "Contained", "Resolved", "Closed"]} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleDelete(tk.id, tk.title, tickets.filter((c) => c.parentId === tk.id).length)}
+                style={{ color: colors.red }}
+              >Delete</Button>
             </div>
           </div>
         </Card>
@@ -125,10 +144,20 @@ export function TicketsModule() {
                   <span style={{ color: colors.textDim, fontSize: 9 }}>{tk.created} · {tk.assignee || "Unassigned"}</span>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                 {children.length > 0 && <Badge color={colors.blue}>{children.length} sub</Badge>}
                 <Badge color={tk.severity === "Critical" ? colors.red : colors.orange}>{tk.severity}</Badge>
                 <Badge color={tk.status === "Closed" ? colors.green : colors.orange}>{tk.status}</Badge>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(tk.id, tk.title, children.length); }}
+                  title="Delete ticket"
+                  style={{
+                    background: "transparent", border: "none", cursor: "pointer",
+                    color: colors.textDim, fontSize: 14, padding: "2px 6px", marginLeft: 4,
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.red; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textDim; }}
+                >✕</button>
               </div>
             </div>
           </Card>
@@ -150,7 +179,19 @@ export function TicketsModule() {
                     <span style={{ color: colors.textDim, fontSize: 8 }}>{child.assignee || "Unassigned"}</span>
                   </div>
                 </div>
-                <Badge color={child.status === "Closed" ? colors.green : colors.orange}>{child.status}</Badge>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <Badge color={child.status === "Closed" ? colors.green : colors.orange}>{child.status}</Badge>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(child.id, child.title, 0); }}
+                    title="Delete sub-ticket"
+                    style={{
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: colors.textDim, fontSize: 12, padding: "2px 6px",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.red; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textDim; }}
+                  >✕</button>
+                </div>
               </div>
             </Card>
           ))}

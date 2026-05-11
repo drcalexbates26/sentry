@@ -270,17 +270,55 @@ model Vendor {
 }
 
 model Policy {
-  // Each row tracks that a tenant has generated a given policy template.
-  // Composite uniqueness on (tenantId, templateId) — same template only once per tenant.
-  id         String   @id // = ${tenantId}:${templateId}
-  templateId String
-  title      String?
-  tenantId   String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  // Each row represents one policy instance (one per template per tenant).
+  // Versioned content lives in PolicyVersion; the IDs below point at the
+  // currently published version and the active editable draft.
+  id                 String   @id // = ${tenantId}:${templateId}
+  templateId         String
+  title              String?
+  publishedVersionId String?  // null until first publication
+  draftVersionId     String?  // null when no edit is in progress
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versions           PolicyVersion[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@unique([tenantId, templateId])
   @@index([tenantId])
+}
+
+model PolicyVersion {
+  // Append-only version log. Draft = editable. Published = immutable.
+  // Two distinct signoffs required to transition in_review → published.
+  id                  String   @id
+  policyId            String
+  policy              Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  versionNumber       Int      // monotonic per policy: 1, 2, 3...
+  content             String   @db.Text  // markdown
+  status              String   // "draft" | "in_review" | "published" | "archived"
+  changesSummary      String?  // optional changelog note
+  // Two-signoff workflow — userId snapshots are captured so historical
+  // records survive if a user is later removed.
+  signoff1UserId      String?
+  signoff1Name        String?
+  signoff1At          DateTime?
+  signoff2UserId      String?
+  signoff2Name        String?
+  signoff2At          DateTime?
+  // Publication
+  publishedAt         DateTime?
+  publishedByUserId   String?
+  publishedByName     String?
+  // Authorship
+  createdByUserId     String
+  createdByName       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([policyId])
+  @@index([policyId, versionNumber])
+  @@index([policyId, status])
 }
 
 model Tabletop {

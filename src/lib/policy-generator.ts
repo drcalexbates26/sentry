@@ -1,33 +1,928 @@
+/**
+ * Audit-grade policy generator.
+ *
+ * Each template renders a single markdown document structured for a Big-4
+ * audit reviewer: Purpose, Scope, Definitions, detailed Policy Statements,
+ * RACI Roles & Responsibilities, Compliance & Audit, Enforcement, Exception
+ * Process, Review Cycle, Approval block, Revision History.
+ *
+ * Tenant variables ({org}, {industry}, {compliance}, {effectiveDate}, etc.)
+ * are interpolated from the calling context; tech-stack mentions render the
+ * configured tool name with a "[To be configured]" fallback when unset.
+ */
 import type { TechStack } from "@/types/organization";
 
-const V = "3.1.0";
+export interface PolicyContext {
+  org: string;
+  industry?: string;
+  effectiveDate: string;       // ISO date, e.g. 2026-05-11
+  complianceFrameworks: string; // comma-separated list
+  // Partial OK — callsites access keys defensively with `tk()` fallback.
+  tech: Partial<TechStack> & Record<string, string | undefined>;
+  documentOwner?: string;       // defaults to CISO
+  approver?: string;            // defaults to "Executive Leadership"
+  contactEmail?: string;        // primary security contact
+}
 
-export function generatePolicy(id: string, O: string, D: string, tech: TechStack, CF: string): string {
-  const NR = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split("T")[0];
-  const ln = "━".repeat(64);
-  const ln2 = "─".repeat(64);
-  const tk = (k: string) => tech[k] || "[To be configured]";
+const VERSION = "1.0";
+const REVIEW_CYCLE_DAYS = 365;
 
-  const hdr = `${ln}\n${O.toUpperCase()}\n${id.toUpperCase()} POLICY\n${ln}\n\nDocument ID:        POL-${id.toUpperCase()}-001\nVersion:            1.0\nEffective Date:     ${D}\nDocument Owner:     Chief Information Security Officer (CISO)\nApproved By:        [Executive Leadership / Board of Directors]\nClassification:     CONFIDENTIAL\nReview Cycle:       Annual\nNext Review:        ${NR}\n\n`;
-  const ftr = `\n${ln}\nSTATEMENT OF MANAGEMENT COMMITMENT\n${ln}\n\n${O} holds information security of paramount importance and is committed to\nsecuring customer, employee, and organizational data.\n\n${ln}\nEND OF DOCUMENT\nConfidential | ${O} | Dark Rock Labs Sentry v${V}\n${ln}`;
+function tk(tech: PolicyContext["tech"], key: string, fallback = "*[To be configured]*"): string {
+  const v = tech[key];
+  return v && v !== "None" ? v : fallback;
+}
 
-  const policies: Record<string, string> = {
-    irp: hdr + `INCIDENT RESPONSE POLICY\n${ln2}\n\n1. PURPOSE\nThis policy establishes a formal incident management framework requiring\nall security incidents to be tracked, documented, and resolved.\n\nAligned to: NIST SP 800-61 Rev. 2, NIST CSF 2.0\n\n2. SCOPE\nApplies to all users of information systems within ${O}.\n\n3. INCIDENT CLASSIFICATION\nSeverity Levels: Low, Medium, High, Critical\n\n4. RESPONSE LIFECYCLE\nPhases: Preparation, Identification, Notification, Containment,\nAnalysis, Eradication, Recovery, Follow-Up\n\n5. TECHNOLOGY REFERENCES\nSIEM: ${tk("siem")} | EDR: ${tk("endpoint")} | Firewall: ${tk("firewall")}\nIdentity: ${tk("identity")} | MFA: ${tk("mfa")}\n\n6. EXTERNAL IR\nDark Rock Cybersecurity - IncidentResponse@Darkrocklabs.com\n\n7. REPORTING REQUIREMENTS\nDFARS: 72 hours | HIPAA: 60 days | State laws: 30-60 days\n\n8. COMPLIANCE: ${CF}\n` + ftr,
+function isoPlusDays(start: string, days: number): string {
+  const d = new Date(start);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
 
-    isp: hdr + `INFORMATION SECURITY POLICY\n${ln2}\n\n1. PURPOSE AND SCOPE\nEstablishes the framework for protecting information assets at ${O}.\n\n2. SECURITY GOVERNANCE\nRisk Committee provides oversight. CISO leads security program.\n\n3. RISK MANAGEMENT\nAnnual enterprise-level risk assessments. Risk register maintained.\n\n4. ACCESS CONTROL\nLeast privilege. Identity platform: ${tk("identity")}\nMFA: ${tk("mfa")}\n\n5. DATA PROTECTION\nClassification: Public, Internal, Confidential, Restricted\nEncryption: AES-256 at rest, TLS 1.2+ in transit\n\n6. NETWORK SECURITY\nFirewall: ${tk("firewall")} | SIEM: ${tk("siem")}\n\n7. ENDPOINT SECURITY\nEDR: ${tk("endpoint")} | Patch SLAs: Critical 72hr, High 7d\n\n8. COMPLIANCE: ${CF}\n` + ftr,
+/**
+ * Builds the standard header that every policy shares — control panel + scope
+ * statement that auditors look for first.
+ */
+function header(title: string, templateId: string, ctx: PolicyContext): string {
+  const owner = ctx.documentOwner ?? "Chief Information Security Officer (CISO)";
+  const approver = ctx.approver ?? "Executive Leadership / Board of Directors";
+  const nextReview = isoPlusDays(ctx.effectiveDate, REVIEW_CYCLE_DAYS);
+  return `# ${title}
 
-    bcp: hdr + `BUSINESS CONTINUITY & DISASTER RECOVERY POLICY\n${ln2}\n\n1. PURPOSE\nMaintaining critical operations during and after disruptive events.\n\n2. BUSINESS IMPACT ANALYSIS\nTier 1 (Mission Critical): RTO 4hr, RPO 1hr\nTier 2 (Business Critical): RTO 24hr, RPO 4hr\nTier 3 (Business Operational): RTO 72hr, RPO 24hr\n\n3. BACKUP\nPrimary: ${tk("backup")} | Cloud: ${tk("cloud")}\n\n4. TESTING\nAnnual DR exercise. Quarterly backup tests.\n\n5. COMPLIANCE: ${CF}\n` + ftr,
+**${ctx.org}**
 
-    acl: hdr + `ACCESS CONTROL & TERMINATION POLICY\n${ln2}\n\n1. PURPOSE\nDefines requirements for granting, managing, and revoking access.\n\n2. IDENTITY\nPlatform: ${tk("identity")} | MFA: ${tk("mfa")}\n\n3. AUTHENTICATION\nMin 14-char complex passwords. MFA required for privileged access.\nAccount lockout after 5 failed attempts.\n\n4. LIFECYCLE\nProvisioning → Quarterly Review → Role Change → Termination\n\n5. COMPLIANCE: ${CF}\n` + ftr,
+| Field | Value |
+|---|---|
+| Document ID | POL-${templateId.toUpperCase()}-001 |
+| Version | ${VERSION} |
+| Status | Draft |
+| Classification | Confidential |
+| Effective Date | ${ctx.effectiveDate} |
+| Next Review | ${nextReview} |
+| Document Owner | ${owner} |
+| Approver(s) | ${approver} |
+| Review Cycle | Annual |
+| Applicable Frameworks | ${ctx.complianceFrameworks} |
+${ctx.industry ? `| Industry | ${ctx.industry} |\n` : ""}
+---
 
-    dcl: hdr + `DATA CLASSIFICATION & GOVERNANCE POLICY\n${ln2}\n\n1. CLASSIFICATION LEVELS\nPublic → Internal → Confidential → Restricted\n\n2. HANDLING REQUIREMENTS\nRestricted: Encryption at rest/transit, need-to-know + MFA, CISO approval for external sharing\n\n3. DLP: ${tk("dlp") !== "None" ? tk("dlp") : "[To be implemented]"}\n\n4. COMPLIANCE: ${CF}\n` + ftr,
+`;
+}
 
-    brn: hdr + `BREACH NOTIFICATION POLICY\n${ln2}\n\n1. PURPOSE\nProcedures for identifying, assessing, and responding to data breaches.\n\n2. NOTIFICATION TIMELINES\nHIPAA: 60 days | GDPR: 72 hours | DFARS: 72 hours | State: 30-60 days\n\n3. BREACH RESPONSE TEAM\nCISO, Legal, Privacy Officer, HR Director, Communications Lead\nExternal: Dark Rock Cybersecurity, Insurance Carrier\n\n4. COMPLIANCE: ${CF}\n` + ftr,
+/**
+ * Standard footer: Approval block, Revision History, end marker. The Approval
+ * block is filled in by the publish workflow (two-signoff requirement).
+ */
+function footer(ctx: PolicyContext): string {
+  return `
 
-    rsk: hdr + `RISK ASSESSMENT & TREATMENT POLICY\n${ln2}\n\n1. FRAMEWORK\nAnnual assessments. Risk Score = Impact × Likelihood\nCritical: 20-25 | High: 12-19 | Medium: 6-11 | Low: 1-5\n\n2. TREATMENT OPTIONS\nAccept | Mitigate | Transfer | Avoid\n\n3. VULNERABILITY SCANNING\n${tk("vulnerability") !== "None" ? tk("vulnerability") : "[To be implemented]"}\n\n4. COMPLIANCE: ${CF}\n` + ftr,
+---
 
-    pat: hdr + `PATCH MANAGEMENT POLICY\n${ln2}\n\n1. SCOPE\nAll systems including: ${tk("endpoint")} endpoints, ${tk("cloud")} cloud,\n${tk("firewall")} firewalls, ${tk("identity")} identity infra\n\n2. SLAs\nCritical (CVSS 9.0-10.0): 72 hours\nHigh (CVSS 7.0-8.9): 7 days\nMedium (CVSS 4.0-6.9): 30 days\nLow (CVSS 0.1-3.9): 90 days\n\n3. PROCESS\nIdentification → Assessment → Testing → Deployment → Verification\n\n4. COMPLIANCE: ${CF}\n` + ftr,
-  };
+## Approval
 
-  return policies[id] || `${hdr}[Policy content for ${id}]\n${ftr}`;
+This policy is approved for publication by the named signatories below. Each signatory attests to having reviewed the policy in full and to its alignment with ${ctx.org}'s information-security program and applicable compliance obligations.
+
+| Role | Name | Title | Date |
+|---|---|---|---|
+| Reviewer 1 | *(captured at signoff)* | *(captured at signoff)* | *(captured at signoff)* |
+| Reviewer 2 | *(captured at signoff)* | *(captured at signoff)* | *(captured at signoff)* |
+| Publisher | *(captured at publication)* | *(captured at publication)* | *(captured at publication)* |
+
+## Revision History
+
+| Version | Date | Author | Summary of Changes |
+|---|---|---|---|
+| ${VERSION} | ${ctx.effectiveDate} | ${ctx.documentOwner ?? "CISO"} | Initial publication. |
+
+---
+
+*This document is the property of ${ctx.org}. It is classified **Confidential** and must not be distributed outside the organization without written authorization from the document owner. Generated by Sentry · Dark Rock Labs.*
+`;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Individual policy bodies (markdown). Each is structured for audit review.
+// ───────────────────────────────────────────────────────────────────────
+
+function irpBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} maintains a formal incident-response capability to detect, contain, and recover from security incidents that threaten the confidentiality, integrity, or availability of information assets. This policy establishes the lifecycle, severity model, roles, and reporting obligations that govern every security incident — internal or vendor-originated — across the organization.
+
+## 1. Purpose
+
+This policy establishes the requirements under which ${ctx.org} identifies, investigates, contains, eradicates, and recovers from information-security incidents. It is structured to align with **NIST SP 800-61 Rev. 2** (Computer Security Incident Handling Guide) and the **Respond** and **Recover** functions of **NIST CSF 2.0**, and to satisfy reporting obligations under the frameworks listed in §10.
+
+## 2. Scope
+
+This policy applies to:
+
+- All information systems owned, leased, operated, or hosted by ${ctx.org}, including on-premise systems, cloud workloads, SaaS applications, and employee endpoints.
+- All workforce members — employees, contractors, interns, and authorized third parties — who interact with those systems.
+- All data classified Internal, Confidential, or Restricted under the Data Classification Policy.
+
+## 3. Definitions
+
+| Term | Definition |
+|---|---|
+| **Event** | An observable occurrence in a system or network. |
+| **Incident** | An event (or series) that violates security policy, harms the organization, or has the credible potential to do so. |
+| **Indicator of Compromise (IoC)** | A technical artifact (file hash, IP, domain, behavior pattern) that suggests an intrusion is occurring or has occurred. |
+| **Containment** | Actions taken to limit the scope and impact of an incident. |
+| **Eradication** | Removal of the cause of the incident, including malware, attacker accounts, persistence mechanisms, and exploited vulnerabilities. |
+| **Recovery** | Restoration of affected systems and data to verified clean state and resumption of normal operations. |
+| **After-Action Review (AAR)** | Formal post-incident analysis documenting lessons learned and remediation actions. |
+
+## 4. Policy Statements
+
+### 4.1 Incident Classification
+
+${ctx.org} classifies every confirmed incident along two axes — **severity** (impact) and **urgency** (time-criticality) — and assigns a single severity tier:
+
+| Tier | Criteria |
+|---|---|
+| **Critical** | Confirmed unauthorized access to Restricted data, ransomware encryption, or extended outage of a Tier-1 system. |
+| **High** | Material breach attempt, malware on multiple endpoints, or extended outage of a Tier-2 system. |
+| **Medium** | Single-endpoint malware, contained policy violation, or short outage of a Tier-3 system. |
+| **Low** | Suspicious activity not confirmed as malicious; informational events. |
+
+### 4.2 Response Lifecycle
+
+Every Critical and High incident shall be tracked through the following phases. Lifecycle artifacts are captured in the Sentry Incident Commander module and become part of the audit record.
+
+1. **Preparation** — playbooks current, tooling instrumented, on-call rotation staffed, tabletop exercises conducted annually.
+2. **Identification** — alert triage and confirmation that the event constitutes an incident.
+3. **Notification** — internal escalation per §4.4 and external notification per §4.5.
+4. **Containment** — short-term containment to stop the bleed, followed by long-term containment to permit forensic analysis.
+5. **Analysis** — full scope and impact determination including affected systems, data, and adversary tradecraft.
+6. **Eradication** — removal of the threat from the environment.
+7. **Recovery** — restoration of services and confirmation that the environment is clean.
+8. **Follow-Up** — AAR within 10 business days, remediation actions tracked to closure, lessons learned applied to playbooks.
+
+### 4.3 Detection & Telemetry
+
+${ctx.org} maintains the following detection capabilities. All sources feed the central SIEM with a minimum 12-month retention.
+
+- **SIEM:** ${tk(t, "siem")}
+- **Endpoint Detection & Response (EDR):** ${tk(t, "endpoint")}
+- **Email security:** ${tk(t, "email", "*Microsoft Defender for O365 or equivalent*")}
+- **Identity provider audit logs:** ${tk(t, "identity")}
+- **Multi-factor authentication telemetry:** ${tk(t, "mfa")}
+- **Firewall / NGFW:** ${tk(t, "firewall")}
+- **DLP:** ${tk(t, "dlp", "*To be implemented per Data Protection Policy*")}
+
+### 4.4 Internal Escalation
+
+The first-line responder shall page the Incident Commander on-call within **15 minutes** of confirming a Critical or High incident. The Incident Commander shall escalate to the CISO within **60 minutes**, and to Executive Leadership within **2 hours** for any incident potentially involving Restricted data or material business impact.
+
+### 4.5 External Reporting
+
+| Authority | Timeline | Trigger |
+|---|---|---|
+| FBI / CISA (US, voluntary) | 72 hours | Significant cyber incident under CIRCIA reporting criteria |
+| HHS OCR (HIPAA) | 60 days | Confirmed breach of unsecured PHI |
+| Supervisory Authority (GDPR Art. 33) | 72 hours | Personal-data breach likely to result in risk to data subjects |
+| State Attorneys General (US) | 30–60 days (state-dependent) | Per applicable breach-notification statute |
+| DoD / DFARS 252.204-7012 | 72 hours | Compromise of Covered Defense Information |
+| Cyber-insurance carrier | Per policy (typically immediate) | Per insurer's incident-notification clause |
+
+## 5. Roles & Responsibilities (RACI)
+
+| Activity | CISO | Incident Commander | SOC / Analyst | Legal | HR | Comms | Executive Leadership |
+|---|---|---|---|---|---|---|---|
+| Incident declaration | A | R | C | I | — | — | I |
+| Containment decisions | A | R | R | C | — | — | I |
+| External notification | A | C | — | R | — | C | A |
+| Customer / employee comms | C | C | — | C | C | R | A |
+| Regulatory filings | C | C | — | R | — | — | A |
+| Post-incident remediation | A | R | R | C | — | — | I |
+
+*Legend: R = Responsible, A = Accountable, C = Consulted, I = Informed.*
+
+## 6. External Incident-Response Partner
+
+${ctx.org} maintains a pre-negotiated retainer with **Dark Rock Cybersecurity** (IncidentResponse@Darkrocklabs.com) for surge capacity, forensic imaging, malware reverse-engineering, and ransomware negotiation. The retainer is activated by the Incident Commander with CISO concurrence.
+
+## 7. Evidence Preservation
+
+All artifacts collected during an incident — disk images, memory captures, log exports, network packet captures — shall be hashed (SHA-256), stored in the Sentry Forensic Vault, and accompanied by a documented chain of custody. Evidence is retained for a minimum of **7 years** or as required by litigation hold, whichever is longer.
+
+## 8. Compliance & Audit
+
+Compliance with this policy is auditable. ${ctx.org} maintains evidence of compliance through:
+
+- Quarterly metrics review (MTTD, MTTR, incidents-by-severity).
+- Annual tabletop exercises covering at least three distinct scenario classes.
+- Annual independent review of incident-response procedures.
+
+## 9. Enforcement
+
+Failure to follow this policy may result in disciplinary action up to and including termination, and civil or criminal liability where applicable.
+
+## 10. Exception Process
+
+Time-bound exceptions may be granted in writing by the CISO with documented compensating controls. Exceptions expire after 90 days and must be re-evaluated.
+
+## 11. Review Cycle
+
+This policy is reviewed at minimum **annually** by the document owner, or following any of: a material incident, an organizational restructuring, a change in applicable regulation, or the introduction of a new technology platform with security implications.
+
+## 12. Applicable Frameworks
+
+${ctx.complianceFrameworks}.`;
+}
+
+function ispBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+The Information Security Policy is ${ctx.org}'s top-level statement of how it protects information assets. It establishes the governance, risk-management, access-control, data-protection, and compliance principles under which every subsidiary security policy operates. All other security policies derive their authority from this document.
+
+## 1. Purpose
+
+This policy defines ${ctx.org}'s commitment to protecting the confidentiality, integrity, and availability of its information assets and the security obligations of every workforce member and third party that interacts with those assets.
+
+## 2. Scope
+
+This policy applies to:
+
+- All information assets owned or processed by ${ctx.org}, regardless of format (electronic, paper, verbal).
+- All systems used to create, transmit, process, store, or destroy those assets.
+- All workforce members, vendors, contractors, and third parties with access to those assets.
+
+## 3. Information-Security Governance
+
+${ctx.org} maintains a multi-layer governance model:
+
+- The **Board of Directors** (or equivalent executive body) holds ultimate accountability for the security program and approves this policy.
+- The **Chief Information Security Officer (CISO)** owns the security program day-to-day, reports to the executive team monthly, and to the Board at least annually.
+- A **Security Steering Committee**, chaired by the CISO and including representatives from Legal, HR, Finance, IT Operations, and the executive sponsor, meets at least quarterly.
+- All workforce members are responsible for the security behavior expected by this policy and its subsidiary policies.
+
+## 4. Risk Management
+
+${ctx.org} operates a continuous risk-management program. Risks are identified, scored (Impact × Likelihood, 1–5 scale each), prioritized, and treated by one of: **Accept, Mitigate, Transfer, Avoid**. The risk register is reviewed quarterly by the Steering Committee and annually by Executive Leadership. Material new risks are escalated within 5 business days of identification.
+
+## 5. Access Control
+
+- Access is granted on a **least-privilege** basis and removed within **24 hours** of role change or termination.
+- Identity is managed centrally through **${tk(t, "identity")}**, with **${tk(t, "mfa")}** enforced for all interactive sign-in and required for administrative actions.
+- Privileged access is granted only with a documented business justification, expires by default, and is logged for audit.
+- A quarterly user-access review is performed by the CISO with system owners.
+
+## 6. Data Protection
+
+${ctx.org} classifies data as **Public**, **Internal**, **Confidential**, or **Restricted** per the Data Classification & Governance Policy. Handling requirements are summarized below:
+
+| Classification | At Rest | In Transit | Sharing |
+|---|---|---|---|
+| Public | None required | None required | Open |
+| Internal | AES-256 strongly recommended | TLS 1.2+ | Internal only |
+| Confidential | AES-256 required | TLS 1.2+ required | Documented authorization |
+| Restricted | AES-256 + key escrow | TLS 1.2+ + mTLS where feasible | CISO + Legal approval |
+
+DLP is enforced via **${tk(t, "dlp", "*To be implemented*")}** for outbound email, endpoint copy operations, and cloud-to-cloud transfers.
+
+## 7. Network & Infrastructure Security
+
+- Perimeter and segmentation are enforced via **${tk(t, "firewall")}** with logging to **${tk(t, "siem")}**.
+- ${ctx.org} adopts a **defense-in-depth** posture: detection at endpoint (**${tk(t, "endpoint")}**), email (**${tk(t, "email", "*standard*")}**), network, identity, and application layers.
+- A vulnerability-scanning program covers all internet-facing assets weekly and internal assets monthly, with remediation SLAs per the Patch Management Policy.
+
+## 8. Endpoint Security
+
+- All organization-owned endpoints run EDR (**${tk(t, "endpoint")}**) with tamper protection enabled and centrally managed.
+- Disk-level encryption is required.
+- Patch SLAs: Critical 72 hours, High 7 days, Medium 30 days, Low 90 days.
+
+## 9. Personnel Security
+
+- All workforce members complete security-awareness training at hire and annually thereafter.
+- Background checks are performed at hire commensurate with the sensitivity of the role.
+- Workforce members must report suspected security incidents within **1 hour** of discovery.
+
+## 10. Vendor & Third-Party Security
+
+Vendors with access to Internal or higher data must complete a security questionnaire and contractually agree to controls commensurate with that data. Vendors handling Restricted data must provide either SOC 2 Type II or equivalent independent attestation.
+
+## 11. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| Board / Executive Sponsor | Approves this policy; resources the security program. |
+| CISO | Owns the program; reports performance; approves exceptions. |
+| Security Steering Committee | Reviews risk register; prioritizes initiatives. |
+| System Owners | Implement controls; respond to access reviews. |
+| Workforce | Adhere to this policy and subsidiary policies; report incidents. |
+
+## 12. Compliance & Audit
+
+The security program is audited at minimum annually by an independent assessor. Findings are tracked to closure and reported to the Steering Committee. Applicable frameworks: ${ctx.complianceFrameworks}.
+
+## 13. Enforcement
+
+Violations may result in disciplinary action up to termination, contract termination for non-employees, and civil or criminal action where applicable.
+
+## 14. Exception Process
+
+The CISO may grant time-bound exceptions in writing with documented compensating controls. Exceptions expire after 90 days.
+
+## 15. Review Cycle
+
+This policy is reviewed annually or on material change (regulation, organization, or technology).`;
+}
+
+function bcpBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} maintains a Business Continuity and Disaster Recovery (BC/DR) capability designed to preserve critical operations during, and rapidly restore them after, disruptive events. This policy establishes the BIA methodology, the recovery-time objectives (RTO) and recovery-point objectives (RPO) by system tier, the recovery strategies, and the testing program that demonstrate continued effectiveness.
+
+## 1. Purpose
+
+This policy defines ${ctx.org}'s requirements for sustaining mission-critical operations during disruptive events and for restoring all operations to a defined service level within a defined time.
+
+## 2. Scope
+
+Applies to every business process, application, dataset, and supporting infrastructure component owned or operated by ${ctx.org}.
+
+## 3. Definitions
+
+| Term | Definition |
+|---|---|
+| **Business Impact Analysis (BIA)** | A formal assessment of the operational, financial, and reputational consequences of process disruption over time. |
+| **Recovery Time Objective (RTO)** | The maximum acceptable elapsed time between disruption and restoration of service. |
+| **Recovery Point Objective (RPO)** | The maximum acceptable data loss measured in time. |
+| **Maximum Tolerable Downtime (MTD)** | The longest period the organization can survive without a process before consequences become unacceptable. |
+
+## 4. Business Impact Analysis
+
+A BIA is conducted at minimum **annually** and after any material organizational or technological change. Each business process is assessed for operational, financial, compliance, and reputational impact at 1-hour, 4-hour, 24-hour, 72-hour, and 7-day disruption durations. Outputs include MTD, RTO, RPO, and tier assignment for every process.
+
+## 5. System Tiering
+
+| Tier | Definition | RTO | RPO |
+|---|---|---|---|
+| **Tier 1 — Mission Critical** | Loss directly threatens revenue, safety, or regulatory standing. | 4 hours | 1 hour |
+| **Tier 2 — Business Critical** | Loss materially impacts operations within one business day. | 24 hours | 4 hours |
+| **Tier 3 — Business Operational** | Loss is tolerable for a short period; workarounds exist. | 72 hours | 24 hours |
+| **Tier 4 — Non-Critical** | Loss is tolerable for up to a week. | 7 days | 24 hours |
+
+## 6. Backup Strategy
+
+- Backups follow the **3-2-1 rule**: 3 copies of data, on 2 different media, with 1 copy offsite.
+- Primary backup platform: **${tk(t, "backup")}**.
+- Cloud workload snapshots: **${tk(t, "cloud")}** native snapshot service.
+- Backups for Restricted data are encrypted at rest with separate key management.
+- Immutable / WORM backups are maintained for ransomware resilience with a minimum 30-day immutability window.
+
+## 7. Recovery Strategies
+
+- Tier 1 systems run in an **active-active** or **warm-standby** configuration across at least two availability zones.
+- Tier 2 systems use **automated failover** to a secondary region or data center.
+- Tier 3 and Tier 4 use **on-demand restore from backup**.
+- Cloud-resident workloads are recoverable via documented Infrastructure-as-Code, not manual rebuild.
+
+## 8. Testing Program
+
+| Test Type | Frequency | Scope |
+|---|---|---|
+| Tabletop / walkthrough | Quarterly | One Tier 1 scenario |
+| Functional component test | Quarterly | One subsystem (auth, DB, network) |
+| Backup restore test | Quarterly | Sample backup set; integrity verified |
+| Full DR exercise | Annual | Full Tier 1 failover with timed RTO measurement |
+
+Results are documented, gaps are tracked to remediation, and the test record is presented to the Steering Committee.
+
+## 9. Activation & Communication
+
+The CISO and CIO jointly authorize BC/DR activation. The Communications lead executes the internal and external communication plan. Status briefings are issued at a documented cadence (typically every 60 minutes for Tier 1 events).
+
+## 10. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| Executive Sponsor | Authorizes high-impact recovery decisions. |
+| CISO / CIO | Activates BC/DR; chairs the recovery cell. |
+| Process Owner | Confirms recovery, validates data integrity. |
+| Workforce | Follows the published communication & assembly plan. |
+
+## 11. Compliance & Audit
+
+This policy supports compliance with: ${ctx.complianceFrameworks}. Audit evidence is preserved for 3 years minimum.
+
+## 12. Enforcement
+
+Failure to maintain recovery posture for a designated system may result in disciplinary action and is escalated to Executive Leadership.
+
+## 13. Exception Process
+
+Exceptions to RTO/RPO targets may be granted by the CISO and CIO jointly, in writing, with documented compensating controls. Exceptions expire after 90 days.
+
+## 14. Review Cycle
+
+Annual review by document owner; quarterly metric review by the Steering Committee.`;
+}
+
+function aclBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} enforces strict access control over its information systems based on the principles of least privilege, separation of duties, and need-to-know. This policy defines how access is granted, reviewed, modified, and revoked across the workforce lifecycle.
+
+## 1. Purpose
+
+To establish requirements for managing user identities, authentication, authorization, and account lifecycle in a manner that minimizes risk of unauthorized access.
+
+## 2. Scope
+
+Every system, application, service, and dataset owned or operated by ${ctx.org}, and every workforce member, vendor, contractor, and third party with access to those resources.
+
+## 3. Identity & Authentication
+
+### 3.1 Identity Provider
+
+The authoritative identity provider for ${ctx.org} is **${tk(t, "identity")}**. All applications shall federate where technically possible.
+
+### 3.2 Authentication Standards
+
+- **Passwords:** Minimum **14 characters**, complexity per NIST 800-63B; reuse prohibited for the last 24 passwords; expiration only on suspected compromise.
+- **Multi-factor authentication (${tk(t, "mfa")}):** Required for all interactive sign-in. Phishing-resistant MFA (FIDO2 / passkeys) required for privileged accounts and administrative consoles.
+- **Service accounts:** Use OAuth client credentials or workload identity; no interactive logon; rotated at least every 90 days; never used by humans.
+- **Session management:** Idle timeout 30 minutes for standard users; 15 minutes for privileged.
+- **Account lockout:** 5 failed attempts in 15 minutes triggers a 15-minute lockout; brute-force events are logged and alerted.
+
+## 4. Authorization
+
+### 4.1 Least Privilege
+
+Access is granted at the lowest level required to perform job duties. Role-based access control (RBAC) is the primary model; attribute-based access control (ABAC) is used where context (location, device posture) materially changes risk.
+
+### 4.2 Privileged Access
+
+Privileged accounts are managed through a Privileged Access Management (PAM) solution where available, are subject to session recording, require approval workflow, and are time-bound. Standing administrative privilege is prohibited; use just-in-time elevation.
+
+### 4.3 Separation of Duties
+
+No single individual shall have unmitigated end-to-end control over a high-risk process (e.g. payment authorization, code-to-production promotion, off-boarding of their own account).
+
+## 5. Access Lifecycle
+
+| Phase | SLA | Process |
+|---|---|---|
+| **Provisioning** | Within 1 business day of HR ticket | HR initiates; manager approves; IdP provisions; access logged. |
+| **Modification** | Within 1 business day of approved request | Manager approves; CISO approves for privileged; logged. |
+| **Quarterly Review** | Once per quarter | System owner reviews all access; stale access removed within 5 business days. |
+| **Termination** | Within 4 hours of HR notification | Disable account, revoke tokens, retain audit logs per Data Retention Policy. |
+| **Re-hire** | Treated as new provisioning | No reactivation of dormant accounts. |
+
+## 6. Remote & Third-Party Access
+
+- Remote access is permitted only through ${ctx.org}-managed VPN or ZTNA with MFA.
+- Vendor / contractor accounts are time-bound (default 90 days) and require named sponsor.
+- Personal-device access is prohibited for Restricted data; permitted for Internal data via mobile-device management (MDM) with required posture (encrypted, screen-locked, supported OS).
+
+## 7. Account Audit & Logging
+
+All access events — sign-in, sign-out, privilege elevation, password reset, MFA enrollment, account creation/deletion — are logged to **${tk(t, "siem")}** with a minimum **12-month** retention.
+
+## 8. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| HR | Initiates joiner / mover / leaver tickets; informs IT promptly. |
+| Manager | Approves access requests; participates in quarterly review. |
+| IT Operations | Executes provisioning; enforces SLAs. |
+| CISO | Approves privileged access; chairs access-review escalation. |
+| Workforce | Safeguards credentials; reports suspected compromise within 1 hour. |
+
+## 9. Compliance & Audit
+
+This policy supports: ${ctx.complianceFrameworks}. Audit evidence (access reviews, termination records, MFA enrollment) is preserved for 3 years.
+
+## 10. Enforcement
+
+Sharing credentials, circumventing MFA, or failing to remove access after role change are violations subject to disciplinary action up to termination.
+
+## 11. Exception Process
+
+Time-bound exceptions may be granted by the CISO with documented compensating controls. Exceptions expire after 90 days.
+
+## 12. Review Cycle
+
+Annual review by document owner.`;
+}
+
+function dclBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} classifies information by sensitivity and applies handling rules commensurate with that sensitivity. This policy defines the four-tier classification schema, the handling requirements at each tier, and the retention and disposal expectations.
+
+## 1. Purpose
+
+To ensure ${ctx.org}'s data is consistently identified, labeled, handled, retained, and disposed of in a manner appropriate to its sensitivity and applicable regulation.
+
+## 2. Scope
+
+All data in any form — electronic, paper, verbal, image — created, received, processed, transmitted, or stored by ${ctx.org} or by any third party on its behalf.
+
+## 3. Classification Levels
+
+| Level | Definition | Examples |
+|---|---|---|
+| **Public** | Information explicitly approved for public release. | Marketing collateral, press releases, public-facing web content. |
+| **Internal** | Default for routine business information. | Internal procedures, project plans, organizational charts. |
+| **Confidential** | Information whose unauthorized disclosure would materially harm the organization, employees, or customers. | Customer lists, contracts, financial reports, source code, security configurations. |
+| **Restricted** | Information whose unauthorized disclosure would cause severe harm or violate regulation. | PII, PHI, payment data, authentication secrets, board-level strategy. |
+
+## 4. Handling Requirements
+
+| Requirement | Public | Internal | Confidential | Restricted |
+|---|---|---|---|---|
+| Encryption at rest | Not required | Recommended | **Required** (AES-256) | **Required** (AES-256 + escrowed keys) |
+| Encryption in transit | Not required | Recommended | **Required** (TLS 1.2+) | **Required** (TLS 1.2+, mTLS where feasible) |
+| Access control | Open | Workforce only | Need-to-know, RBAC, MFA | Need-to-know, MFA, named approval, audit-logged |
+| External sharing | Free | Approval | Documented authorization | CISO + Legal approval |
+| Email | Permitted | Permitted | Encrypted email or secure portal | Secure portal only |
+| Removable media | Permitted | Permitted (encrypted) | Encrypted + tracked | **Prohibited** |
+| Print | Permitted | Permitted | Secure print pickup | Secure print + chain of custody |
+| Disposal | Standard | Crosscut shred / wipe | Crosscut shred / NIST 800-88 purge | NIST 800-88 destroy + Certificate of Destruction |
+
+## 5. Labeling
+
+- Electronic documents: classification label in the header or footer; document properties tagged.
+- Email: classification noted in subject line for Confidential and Restricted.
+- Cloud objects: classification tags applied via the DLP / classification engine where supported by **${tk(t, "dlp", "*planned DLP tool*")}**.
+
+## 6. Data Retention
+
+Retention is set by data type and regulatory requirement; default 7 years for financial and audit records, 6 years for HIPAA-covered records, and per contract for customer data. Data exceeding retention is destroyed per §4.
+
+## 7. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| Data Owner | Classifies the data; authorizes external sharing. |
+| Data Custodian (typically IT) | Implements controls aligned with classification. |
+| Data Steward | Maintains data quality; supports audits. |
+| All Workforce | Apply correct classification; report classification errors. |
+
+## 8. Data-Subject Rights
+
+Where applicable law grants data-subject rights (access, correction, deletion, portability), the **Privacy Officer / DPO** owns the response. SLAs match regulatory requirement (e.g. GDPR Art. 12 — 30 days).
+
+## 9. Compliance & Audit
+
+This policy supports: ${ctx.complianceFrameworks}. DLP and classification telemetry is reviewed quarterly.
+
+## 10. Enforcement
+
+Mis-classification or improper handling of Confidential or Restricted data is a violation and may result in disciplinary action up to termination, contract termination for non-employees, and regulatory consequences.
+
+## 11. Exception Process
+
+The CISO and the Data Owner may jointly grant time-bound exceptions with documented compensating controls.
+
+## 12. Review Cycle
+
+Annual review; classification schema reviewed every 2 years for regulatory alignment.`;
+}
+
+function brnBody(ctx: PolicyContext): string {
+  return `## Executive Summary
+
+${ctx.org} maintains a structured process for identifying, assessing, and responding to data breaches. This policy ensures that legal, regulatory, contractual, and ethical notification obligations are met within the applicable timelines, that affected parties are treated fairly and transparently, and that learnings feed back into the broader security program.
+
+## 1. Purpose
+
+To define the procedures by which ${ctx.org} identifies a data breach, assesses the harm, notifies regulators and affected individuals, and documents the response for audit and continuous improvement.
+
+## 2. Scope
+
+Any incident involving unauthorized acquisition, access, use, modification, or disclosure of data classified Internal, Confidential, or Restricted under the Data Classification Policy.
+
+## 3. Definitions
+
+| Term | Definition |
+|---|---|
+| **Breach** | Unauthorized acquisition, access, use, or disclosure that compromises the security or privacy of protected information. |
+| **PHI** | Protected Health Information as defined under HIPAA. |
+| **PII** | Personally Identifiable Information — name, SSN, account numbers, biometrics, etc. |
+| **Risk of Harm** | Likelihood that the breach causes financial, reputational, or physical harm to affected individuals. |
+
+## 4. Breach Identification
+
+A suspected breach is escalated to the Breach Response Team within **1 hour** of discovery by any workforce member. Initial assessment is completed within **24 hours** to determine whether the event constitutes a breach under applicable law.
+
+## 5. Risk Assessment
+
+The Breach Response Team assesses **probability of compromise** and **risk of harm** considering: data type, encryption status, recipient, time exposed, mitigating factors. The assessment is documented and signed by the Privacy Officer.
+
+## 6. Notification Timelines
+
+| Authority | Trigger | Timeline | Method |
+|---|---|---|---|
+| **HHS OCR (HIPAA)** | Confirmed PHI breach | 60 days from discovery (annual log for < 500 records) | OCR portal + written report |
+| **Affected individuals (HIPAA)** | Confirmed PHI breach | 60 days from discovery | First-class mail or email if authorized |
+| **HHS / Media (HIPAA, >500 records in a state)** | Same | Without unreasonable delay | Prominent media outlet in the state |
+| **GDPR Supervisory Authority** | Personal data breach with risk to subjects | 72 hours from awareness | Authority's prescribed form |
+| **GDPR data subjects** | High risk to rights / freedoms | Without undue delay | Direct, plain-language communication |
+| **State Attorneys General (US)** | Per state law | 30–90 days (state-dependent) | State-prescribed form |
+| **Card brands (PCI-DSS)** | Cardholder data breach | Per card-brand contract | Card-brand reporting portal |
+| **Cyber-insurance carrier** | Any qualifying incident | Per policy (typically immediate) | Carrier's claims process |
+| **FBI / Secret Service / Law enforcement** | Suspected criminal activity | Per Legal counsel | As directed by counsel |
+
+## 7. Breach Response Team
+
+| Role | Member |
+|---|---|
+| Incident Commander | CISO or designated alternate |
+| Privacy Officer | Owner of data-subject rights and HIPAA / GDPR obligations |
+| Legal Counsel | Internal counsel + external breach counsel as required |
+| HR Director | Insider-threat and personnel implications |
+| Communications Lead | Customer, employee, and media communications |
+| External IR Partner | Dark Rock Cybersecurity, retained per IR Policy |
+
+## 8. Communications
+
+Customer- and individual-facing notifications follow templated language reviewed annually by Legal. Each notification includes: what happened, what data was involved, what we are doing, what the recipient can do, who to contact, and identity-protection support where appropriate.
+
+## 9. Documentation
+
+For every notification event ${ctx.org} retains: the assessment, decision, notification text, recipient list, delivery confirmation, and any regulator correspondence — for a minimum of **7 years**.
+
+## 10. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| CISO | Owns the breach-response program. |
+| Privacy Officer | Determines notification obligations; runs the response. |
+| Legal | Approves all external communications and regulatory filings. |
+| HR | Coordinates internal communications and any personnel actions. |
+| Comms | Manages customer and public communications. |
+| All Workforce | Reports suspected breaches within 1 hour of discovery. |
+
+## 11. Compliance & Audit
+
+Compliance with this policy is auditable through the breach log, decision documentation, and notification records. Applicable: ${ctx.complianceFrameworks}.
+
+## 12. Enforcement
+
+Failure to report a suspected breach is a violation subject to disciplinary action up to termination.
+
+## 13. Exception Process
+
+Limited deferral of notification may be permitted only at the explicit written direction of law enforcement; such deferral is documented and reviewed weekly.
+
+## 14. Review Cycle
+
+Annual review; templates reviewed at minimum biennially for regulatory alignment.`;
+}
+
+function rskBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} operates a continuous, risk-based information-security program. This policy establishes the framework, methodology, and cadence by which information-security risks are identified, assessed, treated, and monitored — and through which the security investments and priorities of the organization are aligned with the appetite of executive leadership.
+
+## 1. Purpose
+
+To define a consistent, repeatable process for identifying and managing information-security risks across ${ctx.org}.
+
+## 2. Scope
+
+All processes, systems, data, vendors, and external dependencies of ${ctx.org}.
+
+## 3. Risk-Management Framework
+
+### 3.1 Risk Identification
+
+Risks are identified from: vulnerability scans, threat-intelligence feeds, incident lessons-learned, audit findings, change-management impact assessments, vendor risk reviews, and the annual enterprise-risk-assessment cycle.
+
+### 3.2 Risk Scoring
+
+Each risk is scored on two axes — **Impact** (1–5) and **Likelihood** (1–5) — producing a risk score 1–25:
+
+| Score | Tier | Treatment |
+|---|---|---|
+| 20–25 | Critical | Immediate executive escalation; documented treatment plan within 5 business days. |
+| 12–19 | High | Treatment plan within 15 business days; reported quarterly. |
+| 6–11 | Medium | Treatment plan within 60 days; reported in the risk register. |
+| 1–5 | Low | Tracked in the register; treated as resources allow. |
+
+### 3.3 Risk Treatment
+
+For each accepted, mitigated, transferred, or avoided risk:
+
+- **Accept** — Documented residual risk acknowledgment, signed by the CISO and the relevant Executive Sponsor for any risk scoring ≥ 12.
+- **Mitigate** — Documented control implementation plan with owner, timeline, and verification step.
+- **Transfer** — Documented allocation to a third party (typically through contract or insurance), with monitoring of the third party's posture.
+- **Avoid** — Documented removal of the activity creating the risk.
+
+### 3.4 Risk Monitoring
+
+The risk register is reviewed:
+
+- Weekly: by the CISO for Critical risks.
+- Monthly: by the security team for High risks.
+- Quarterly: by the Security Steering Committee for the full register.
+- Annually: by Executive Leadership / Board.
+
+## 4. Vulnerability Management
+
+Vulnerabilities feed the risk register via the vulnerability scanner: **${tk(t, "vulnerability", "*Tenable, Qualys, or equivalent — to be implemented*")}**. Treatment SLAs are defined in the Patch Management Policy. Exceptions follow §9 of this policy.
+
+## 5. Vendor Risk
+
+Every vendor with access to Internal-or-higher data is assessed before contract signing and annually thereafter. Vendors handling Restricted data must provide independent attestation (SOC 2 Type II or equivalent). Material changes in vendor posture (incident, ownership change, attestation lapse) are reviewed within 30 days.
+
+## 6. Threat Intelligence
+
+${ctx.org} consumes threat intelligence to inform risk likelihood scoring and detection engineering. Sources include: CISA advisories, NVD, CISA KEV, vendor research blogs, and industry ISAC where applicable.
+
+## 7. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| Board / Exec Sponsor | Approves risk appetite; reviews top risks annually. |
+| CISO | Owns the program; escalates Critical risks; approves treatment plans. |
+| Security Steering Committee | Reviews register; prioritizes treatment. |
+| Risk Owner (process or system owner) | Implements treatment; reports progress. |
+| All Workforce | Identifies and escalates risks. |
+
+## 8. Compliance & Audit
+
+This policy supports: ${ctx.complianceFrameworks}. The risk register is treated as audit evidence.
+
+## 9. Enforcement
+
+Failure to register, treat, or escalate a known risk is a violation subject to disciplinary action.
+
+## 10. Exception Process
+
+Risk acceptance for Critical or High risks requires written CISO + Executive Sponsor approval and is time-bound (90 days, renewable). Continuous acceptance is prohibited.
+
+## 11. Review Cycle
+
+Annual review by document owner.`;
+}
+
+function patBody(ctx: PolicyContext): string {
+  const t = ctx.tech;
+  return `## Executive Summary
+
+${ctx.org} maintains a continuous patch- and vulnerability-management program designed to remediate known vulnerabilities within risk-tiered timelines, minimize exposure to active exploitation, and demonstrate effective control to auditors and regulators.
+
+## 1. Purpose
+
+To establish the requirements for identifying, prioritizing, deploying, and validating security and software updates across the ${ctx.org} estate.
+
+## 2. Scope
+
+All organization-owned or operated assets including:
+
+- Endpoints managed via **${tk(t, "endpoint")}**.
+- Cloud workloads on **${tk(t, "cloud")}**.
+- Network and security infrastructure: **${tk(t, "firewall")}**, **${tk(t, "identity")}**.
+- Productivity platform: **${tk(t, "email", "Microsoft 365 / Google Workspace")}**.
+- Containers, container images, and orchestrators.
+- Application dependencies (libraries, packages, SDKs).
+- Third-party SaaS configurations.
+
+## 3. Vulnerability Discovery
+
+Vulnerabilities are discovered through:
+
+- Continuous scanning: **${tk(t, "vulnerability", "*planned vulnerability scanner*")}** weekly external, monthly internal, daily for cloud workloads.
+- Software Composition Analysis (SCA) in CI/CD for application dependencies.
+- Manufacturer / vendor security advisories monitored by the security team.
+- CISA Known Exploited Vulnerabilities (KEV) catalog — checked daily.
+- Public CVE feeds (NVD).
+- Penetration tests and red-team engagements.
+
+## 4. Severity & SLAs
+
+CVSS v3.1 base score determines initial severity; KEV listing and confirmed exploit availability **escalate** the tier by one level.
+
+| Severity | CVSS | Standard SLA | KEV / Exploited SLA |
+|---|---|---|---|
+| **Critical** | 9.0–10.0 | 72 hours | 24 hours |
+| **High** | 7.0–8.9 | 7 days | 72 hours |
+| **Medium** | 4.0–6.9 | 30 days | 7 days |
+| **Low** | 0.1–3.9 | 90 days | 30 days |
+
+Internet-facing systems and systems handling Restricted data have **half** the standard SLA.
+
+## 5. Patch Process
+
+| Step | Owner | Timing |
+|---|---|---|
+| Identification | Security Operations | Continuous |
+| Risk-tier assignment | Security Operations | ≤ 4 hours after discovery |
+| Ticket creation | Sentry IR / Tickets module | Same day |
+| Testing (Tier 1 systems) | System Owner | Per SLA |
+| Deployment | IT Operations / Engineering | Per SLA |
+| Verification | Security Operations | Within 24 hours of deployment |
+| Exception (if SLA missed) | System Owner + CISO | Documented per §9 |
+
+Emergency patches (KEV with active exploitation against ${ctx.org} or its sector) follow the **out-of-cycle change** process: CISO authorizes; change-advisory-board notified retroactively within 24 hours.
+
+## 6. Patch Sources
+
+- Operating systems and Microsoft applications: WSUS / Intune / equivalent endpoint management — typically via **${tk(t, "endpoint")}**.
+- Cloud: native provider patch / image-update pipelines.
+- Third-party software: vendor download portals with checksum verification.
+- Open-source dependencies: pinned versions in lock files; renovate / dependabot for proposals.
+
+All patches are signed; signatures verified before deployment. Patches from unverified sources are prohibited.
+
+## 7. Rollback
+
+Every Tier 1 / Tier 2 patch deployment plan must include a documented rollback procedure, validated in a non-production environment when feasible.
+
+## 8. Reporting & Metrics
+
+The security team reports the following monthly to the Steering Committee:
+
+- Open vulnerabilities by severity.
+- SLA compliance rate by severity and asset tier.
+- Mean time to remediate by severity.
+- Vulnerabilities exceeding SLA, with remediation forecast.
+
+## 9. Exception Process
+
+Where a patch cannot be applied within SLA, the System Owner submits a documented exception including: compensating control, risk acceptance signoff (CISO for High, CISO + Executive Sponsor for Critical), and target resolution date. Exceptions expire after 90 days.
+
+## 10. Roles & Responsibilities
+
+| Role | Responsibility |
+|---|---|
+| Security Operations | Discovery, severity assignment, SLA tracking, verification. |
+| IT Operations / Engineering | Test, deploy, validate. |
+| System Owner | Approves deployments to their systems; owns exceptions. |
+| Change Advisory Board | Approves standard-process patches; receives emergency notifications. |
+| CISO | Approves exceptions; escalates SLA breach. |
+
+## 11. Compliance & Audit
+
+Applicable frameworks: ${ctx.complianceFrameworks}. Audit evidence retained 3 years minimum.
+
+## 12. Enforcement
+
+Repeated SLA breach by a system owner is escalated to the CISO and may trigger disciplinary action.
+
+## 13. Review Cycle
+
+Annual review by document owner; SLA matrix reviewed semi-annually against the evolving threat landscape.`;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Entry point: render a policy by template id.
+// ───────────────────────────────────────────────────────────────────────
+
+const TITLES: Record<string, string> = {
+  irp: "Incident Response Policy",
+  isp: "Information Security Policy",
+  bcp: "Business Continuity & Disaster Recovery Policy",
+  acl: "Access Control & Termination Policy",
+  dcl: "Data Classification & Governance Policy",
+  brn: "Breach Notification Policy",
+  rsk: "Risk Assessment & Treatment Policy",
+  pat: "Patch Management Policy",
+};
+
+const BODIES: Record<string, (ctx: PolicyContext) => string> = {
+  irp: irpBody,
+  isp: ispBody,
+  bcp: bcpBody,
+  acl: aclBody,
+  dcl: dclBody,
+  brn: brnBody,
+  rsk: rskBody,
+  pat: patBody,
+};
+
+export function generatePolicy(templateId: string, ctx: PolicyContext): string;
+// Backward-compatible signature kept for existing callers; new callers should use the ctx variant.
+export function generatePolicy(templateId: string, org: string, date: string, tech: TechStack, complianceFrameworks: string): string;
+export function generatePolicy(
+  templateId: string,
+  ctxOrOrg: PolicyContext | string,
+  date?: string,
+  tech?: TechStack,
+  complianceFrameworks?: string,
+): string {
+  const ctx: PolicyContext = typeof ctxOrOrg === "string"
+    ? {
+        org: ctxOrOrg,
+        effectiveDate: date ?? new Date().toISOString().split("T")[0],
+        tech: tech ?? {},
+        complianceFrameworks: complianceFrameworks ?? "As determined by organizational requirements",
+      }
+    : ctxOrOrg;
+
+  const title = TITLES[templateId] ?? "Policy";
+  const body = (BODIES[templateId] ?? (() => `_Template ${templateId} not yet authored._`))(ctx);
+  return header(title, templateId, ctx) + body + footer(ctx);
 }

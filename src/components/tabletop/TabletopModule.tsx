@@ -605,28 +605,34 @@ export function TabletopModule() {
         <div style={{ textAlign: "center", padding: "16px 0" }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>◫</div>
           <h2 style={{ color: colors.white, fontSize: 18, fontWeight: 800, margin: "0 0 8px" }}>ATLAS by Dark Rock Labs</h2>
+          <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12 }}>
+            <Badge color={colors.teal}>ROADMAP</Badge>
+            <Badge color={colors.textMuted}>Target: Q4 2026</Badge>
+          </div>
           <p style={{ color: colors.textMuted, fontSize: 11, maxWidth: 560, margin: "0 auto 6px", lineHeight: 1.6 }}>
             ATLAS is Dark Rock Labs&apos; AI-led, fully autonomous cyber tabletop exercise platform. It delivers executive-grade, facilitated incident response exercises that adapt in real-time to your team&apos;s decisions.
           </p>
           <p style={{ color: colors.textMuted, fontSize: 10, maxWidth: 520, margin: "0 auto 16px", lineHeight: 1.5 }}>
             Unlike traditional tabletops that rely on a human facilitator reading from a script, ATLAS uses AI to generate dynamic, branching scenarios that respond to your team&apos;s actions — no two exercises play out the same. It evaluates response decisions against NIST and MITRE ATT&CK frameworks and generates a professional after-action report immediately upon completion.
           </p>
-          <Badge color={colors.green} className="mb-3">LIVE</Badge>
+          <p style={{ color: colors.teal, fontSize: 10, maxWidth: 520, margin: "0 auto 16px", lineHeight: 1.6, fontWeight: 600 }}>
+            Coming to Sentry: a one-click handoff from Light Tabletop into an ATLAS-facilitated exercise, with results piped back into your Sentry findings and action items. Register interest below to be notified at GA.
+          </p>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
-            <Button onClick={() => window.open("https://darkrocksec.com", "_blank")}>Launch ATLAS →</Button>
-            <Button variant="outline" onClick={() => window.open("https://darkrocksec.com", "_blank")}>Learn More</Button>
+            <Button onClick={() => window.open("https://darkrocksec.com", "_blank")}>Learn About ATLAS →</Button>
+            <Button variant="outline" onClick={() => modal.showAlert("Interest registered", "We'll notify your tenant admins when ATLAS is available inside Sentry.")}>Register Interest</Button>
           </div>
           <div style={{ color: colors.textDim, fontSize: 9, marginTop: 12 }}>darkrocksec.com</div>
         </div>
       </Card>
 
-      <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Available ATLAS Scenarios</div>
+      <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Planned ATLAS scenarios</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
         {ATLAS_SCENARIOS.map((s) => (
-          <Card key={s.name} onClick={() => window.open("https://darkrocksec.com", "_blank")} style={{ cursor: "pointer", textAlign: "center", padding: "16px 12px" }}>
+          <Card key={s.name} style={{ textAlign: "center", padding: "16px 12px", opacity: 0.85 }}>
             <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
             <div style={{ color: colors.white, fontSize: 11, fontWeight: 700 }}>{s.name}</div>
-            <Button variant="ghost" size="sm" style={{ marginTop: 8 }}>Launch →</Button>
+            <Badge color={colors.textDim}>Roadmap</Badge>
           </Card>
         ))}
       </div>

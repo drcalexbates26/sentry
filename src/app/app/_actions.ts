@@ -662,11 +662,9 @@ function hashLessonId(tenantId: string, l: LessonRow): string {
 }
 
 async function syncPoliciesTo(tenantId: string, templateIds: string[]): Promise<void> {
+  // Versioned-policy workflow owns deletes — never wipe rows here, just
+  // upsert the bare Policy row so legacy "generated" UI continues to work.
   const unique = [...new Set(templateIds)];
-  const ids = unique.map((tpl) => `${tenantId}:${tpl}`);
-  await prisma.policy.deleteMany({
-    where: ids.length === 0 ? { tenantId } : { tenantId, NOT: { id: { in: ids } } },
-  });
   await Promise.all(unique.map((templateId) => {
     const id = `${tenantId}:${templateId}`;
     return prisma.policy.upsert({
@@ -1125,6 +1123,340 @@ export async function clearTenantState(): Promise<{ ok: boolean }> {
     prisma.tabletop.deleteMany({ where: { tenantId } }),
     prisma.lesson.deleteMany({ where: { tenantId } }),
     prisma.policy.deleteMany({ where: { tenantId } }),
+  ]);
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+// ═══ Versioned policy workflow ═══════════════════════════════════════
+//
+// Lifecycle: generate → draft → in_review → published. Two distinct
+// signoffs are required to transition in_review → published. Starting a
+// new version of a published policy creates a fresh draft.
+
+import { generatePolicy, type PolicyContext } from "@/lib/policy-generator";
+
+export type PolicyVersionStatus = "draft" | "in_review" | "published" | "archived";
+
+export interface PolicyVersionDTO {
+  id: string;
+  policyId: string;
+  templateId: string;
+  versionNumber: number;
+  content: string;
+  status: PolicyVersionStatus;
+  changesSummary: string | null;
+  signoff1: { userId: string; name: string; at: string } | null;
+  signoff2: { userId: string; name: string; at: string } | null;
+  publishedAt: string | null;
+  publishedBy: { userId: string; name: string } | null;
+  createdBy: { userId: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicyDTO {
+  id: string;
+  templateId: string;
+  title: string | null;
+  publishedVersion: PolicyVersionDTO | null;
+  draftVersion: PolicyVersionDTO | null;
+  inReviewVersion: PolicyVersionDTO | null;
+  versions: PolicyVersionDTO[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toVersionDTO(v: {
+  id: string; policyId: string; versionNumber: number; content: string;
+  status: string; changesSummary: string | null;
+  signoff1UserId: string | null; signoff1Name: string | null; signoff1At: Date | null;
+  signoff2UserId: string | null; signoff2Name: string | null; signoff2At: Date | null;
+  publishedAt: Date | null; publishedByUserId: string | null; publishedByName: string | null;
+  createdByUserId: string; createdByName: string | null;
+  createdAt: Date; updatedAt: Date;
+}, templateId: string): PolicyVersionDTO {
+  return {
+    id: v.id,
+    policyId: v.policyId,
+    templateId,
+    versionNumber: v.versionNumber,
+    content: v.content,
+    status: v.status as PolicyVersionStatus,
+    changesSummary: v.changesSummary,
+    signoff1: v.signoff1UserId && v.signoff1At ? { userId: v.signoff1UserId, name: v.signoff1Name ?? "", at: v.signoff1At.toISOString() } : null,
+    signoff2: v.signoff2UserId && v.signoff2At ? { userId: v.signoff2UserId, name: v.signoff2Name ?? "", at: v.signoff2At.toISOString() } : null,
+    publishedAt: v.publishedAt?.toISOString() ?? null,
+    publishedBy: v.publishedByUserId ? { userId: v.publishedByUserId, name: v.publishedByName ?? "" } : null,
+    createdBy: { userId: v.createdByUserId, name: v.createdByName ?? "" },
+    createdAt: v.createdAt.toISOString(),
+    updatedAt: v.updatedAt.toISOString(),
+  };
+}
+
+async function loadPolicyContext(tenantId: string): Promise<PolicyContext> {
+  const [tenant, org] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true } }),
+    prisma.organization.findFirst({ where: { tenantId }, select: { industry: true, techStack: true, compliance: true } }),
+  ]);
+  // techStack is JSON in Prisma — the PolicyContext type tolerates a partial
+  // map because every callsite accesses keys defensively with a fallback.
+  const techStack = (org?.techStack as Record<string, string> | null) ?? {};
+  const compliance = (org?.compliance ?? []).join(", ") || "As determined by organizational requirements";
+  return {
+    org: tenant?.name ?? "[Organization Name]",
+    industry: org?.industry ?? undefined,
+    effectiveDate: new Date().toISOString().split("T")[0],
+    complianceFrameworks: compliance,
+    tech: techStack as PolicyContext["tech"],
+    contactEmail: tenant?.contactEmail ?? undefined,
+  };
+}
+
+function policyId(tenantId: string, templateId: string): string {
+  return `${tenantId}:${templateId}`;
+}
+
+function versionId(tenantId: string, templateId: string, n: number): string {
+  return `pv_${tenantId.replace(/[^a-z0-9]/gi, "")}_${templateId}_${n}_${Date.now().toString(36)}`;
+}
+
+/**
+ * List every policy for the active tenant with all version history. Drives
+ * the Policies module UI in one round-trip.
+ */
+export async function listPolicies(): Promise<PolicyDTO[]> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const policies = await prisma.policy.findMany({
+    where: { tenantId },
+    include: { versions: { orderBy: { versionNumber: "desc" } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return policies.map((p) => {
+    const versions = p.versions.map((v) => toVersionDTO(v, p.templateId));
+    const draft = versions.find((v) => v.id === p.draftVersionId) ?? null;
+    const published = versions.find((v) => v.id === p.publishedVersionId) ?? null;
+    const inReview = versions.find((v) => v.status === "in_review") ?? null;
+    return {
+      id: p.id, templateId: p.templateId, title: p.title,
+      publishedVersion: published, draftVersion: draft, inReviewVersion: inReview,
+      versions,
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: p.updatedAt.toISOString(),
+    };
+  });
+}
+
+/**
+ * Generate a fresh draft from the template. If a draft already exists for
+ * this policy it is preserved (returned as-is). If a published version
+ * exists, a new draft is created with content seeded from the template
+ * regenerated against current tenant context (refresh).
+ */
+export async function generatePolicyDraft(templateId: string): Promise<{ ok: true; policy: PolicyDTO } | { ok: false; error: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can generate policies." };
+  }
+
+  const ctx = await loadPolicyContext(tenantId);
+  const content = generatePolicy(templateId, ctx);
+  const pid = policyId(tenantId, templateId);
+
+  // Make sure the parent Policy row exists.
+  await prisma.policy.upsert({
+    where: { id: pid },
+    create: { id: pid, tenantId, templateId, title: null },
+    update: {},
+  });
+
+  // If a draft already exists, hand it back instead of overwriting.
+  const existing = await prisma.policy.findUnique({
+    where: { id: pid },
+    include: { versions: { orderBy: { versionNumber: "desc" } } },
+  });
+  if (existing?.draftVersionId) {
+    return { ok: true, policy: (await listPolicies()).find((p) => p.id === pid)! };
+  }
+
+  const lastVersionNumber = existing?.versions[0]?.versionNumber ?? 0;
+  const nextNumber = lastVersionNumber + 1;
+  const vid = versionId(tenantId, templateId, nextNumber);
+  const userName = session.user!.fullName ?? session.user!.email ?? "Unknown";
+
+  await prisma.policyVersion.create({
+    data: {
+      id: vid, policyId: pid, versionNumber: nextNumber,
+      content, status: "draft",
+      createdByUserId: session.authId, createdByName: userName,
+      changesSummary: nextNumber === 1 ? "Initial generation from template." : "Regenerated from updated template.",
+    },
+  });
+  await prisma.policy.update({ where: { id: pid }, data: { draftVersionId: vid } });
+
+  revalidatePath("/app");
+  return { ok: true, policy: (await listPolicies()).find((p) => p.id === pid)! };
+}
+
+/** Save the active draft's content. Only mutable while status = draft. */
+export async function savePolicyDraft(input: { templateId: string; content: string; changesSummary?: string }): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can edit policies." };
+  }
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, input.templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "No draft to save. Generate or start a new version first." };
+  const draft = await prisma.policyVersion.findUnique({ where: { id: policy.draftVersionId } });
+  if (!draft) return { ok: false, error: "Draft missing." };
+  if (draft.status !== "draft") return { ok: false, error: "This version is no longer editable." };
+
+  await prisma.policyVersion.update({
+    where: { id: draft.id },
+    data: { content: input.content, changesSummary: input.changesSummary ?? draft.changesSummary, updatedAt: new Date() },
+  });
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/** Transition the draft from `draft` → `in_review` (locks editing). */
+export async function submitPolicyForReview(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "No draft to submit." };
+  const draft = await prisma.policyVersion.findUnique({ where: { id: policy.draftVersionId } });
+  if (!draft || draft.status !== "draft") return { ok: false, error: "Draft is no longer in editable state." };
+  await prisma.policyVersion.update({ where: { id: draft.id }, data: { status: "in_review" } });
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/** Capture one signoff. Two distinct signoffs are required to publish. */
+export async function signOffPolicy(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can sign off policies." };
+  }
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "No version in review." };
+  const v = await prisma.policyVersion.findUnique({ where: { id: policy.draftVersionId } });
+  if (!v) return { ok: false, error: "Version missing." };
+  if (v.status !== "in_review") return { ok: false, error: "Policy is not in review." };
+
+  const userId = session.authId;
+  const userName = session.user!.fullName ?? session.user!.email ?? "Unknown";
+  const at = new Date();
+
+  if (v.signoff1UserId === userId || v.signoff2UserId === userId) {
+    return { ok: false, error: "You have already signed off this version. Two distinct signoffs are required." };
+  }
+
+  if (!v.signoff1UserId) {
+    await prisma.policyVersion.update({
+      where: { id: v.id },
+      data: { signoff1UserId: userId, signoff1Name: userName, signoff1At: at },
+    });
+  } else if (!v.signoff2UserId) {
+    await prisma.policyVersion.update({
+      where: { id: v.id },
+      data: { signoff2UserId: userId, signoff2Name: userName, signoff2At: at },
+    });
+  } else {
+    return { ok: false, error: "Already fully signed. Publish to make it live." };
+  }
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/** Publish — requires two signoffs in place. Locks the version, makes it
+ *  the new publishedVersion, archives any previous published version. */
+export async function publishPolicy(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can publish policies." };
+  }
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "Nothing to publish." };
+  const v = await prisma.policyVersion.findUnique({ where: { id: policy.draftVersionId } });
+  if (!v) return { ok: false, error: "Version missing." };
+  if (v.status !== "in_review") return { ok: false, error: "Version must be in review with both signoffs before publishing." };
+  if (!v.signoff1UserId || !v.signoff2UserId) return { ok: false, error: "Two distinct signoffs are required before publishing." };
+
+  const userName = session.user!.fullName ?? session.user!.email ?? "Unknown";
+  const at = new Date();
+  await prisma.$transaction([
+    // Archive any previously-published version
+    ...(policy.publishedVersionId
+      ? [prisma.policyVersion.update({ where: { id: policy.publishedVersionId }, data: { status: "archived" } })]
+      : []),
+    prisma.policyVersion.update({
+      where: { id: v.id },
+      data: { status: "published", publishedAt: at, publishedByUserId: session.authId, publishedByName: userName },
+    }),
+    prisma.policy.update({
+      where: { id: policy.id },
+      data: { publishedVersionId: v.id, draftVersionId: null },
+    }),
+  ]);
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/** Create a fresh draft version from the currently-published version. */
+export async function startNewPolicyVersion(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can edit policies." };
+  }
+  const policy = await prisma.policy.findUnique({
+    where: { id: policyId(tenantId, templateId) },
+    include: { versions: { orderBy: { versionNumber: "desc" }, take: 1 } },
+  });
+  if (!policy) return { ok: false, error: "Policy does not exist. Generate it first." };
+  if (policy.draftVersionId) return { ok: false, error: "A draft is already in progress. Finish or discard it first." };
+  if (!policy.publishedVersionId) return { ok: false, error: "Publish the initial version before starting a new one." };
+
+  const published = await prisma.policyVersion.findUnique({ where: { id: policy.publishedVersionId } });
+  if (!published) return { ok: false, error: "Published version missing." };
+
+  const lastNumber = policy.versions[0]?.versionNumber ?? 1;
+  const nextNumber = lastNumber + 1;
+  const vid = versionId(tenantId, templateId, nextNumber);
+  const userName = session.user!.fullName ?? session.user!.email ?? "Unknown";
+
+  await prisma.policyVersion.create({
+    data: {
+      id: vid, policyId: policy.id, versionNumber: nextNumber,
+      content: published.content, status: "draft",
+      createdByUserId: session.authId, createdByName: userName,
+      changesSummary: "Forked from published version " + lastNumber + ".",
+    },
+  });
+  await prisma.policy.update({ where: { id: policy.id }, data: { draftVersionId: vid } });
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/** Discard the current draft (irreversible). */
+export async function discardPolicyDraft(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "No draft to discard." };
+  await prisma.$transaction([
+    prisma.policyVersion.delete({ where: { id: policy.draftVersionId } }),
+    prisma.policy.update({ where: { id: policy.id }, data: { draftVersionId: null } }),
   ]);
   revalidatePath("/app");
   return { ok: true };

@@ -90,6 +90,11 @@ interface AppState {
   addTickets: (tickets: Ticket[]) => void;
   updateTicket: (id: number, updates: Partial<Ticket>) => void;
   addChildTicket: (parentId: number, child: Ticket) => void;
+  /**
+   * Delete a ticket and cascade to any child tickets that point at it as
+   * parentId. Also removes the ticket id from any parent's childIds list.
+   */
+  deleteTicket: (id: number) => void;
 
   // Tasks
   tasks: TaskItem[];
@@ -401,6 +406,18 @@ export const useStore = create<AppState>((set) => ({
             : t
         ),
       ],
+    })),
+  deleteTicket: (id) =>
+    set((s) => ({
+      tickets: s.tickets
+        // Drop the ticket itself + any child whose parentId points at it
+        .filter((t) => t.id !== id && t.parentId !== id)
+        // Strip the deleted id out of any parent's childIds list
+        .map((t) =>
+          t.childIds?.includes(id)
+            ? { ...t, childIds: t.childIds.filter((c) => c !== id) }
+            : t,
+        ),
     })),
 
   // Tasks - addTaskWithTicket creates a child ticket automatically
