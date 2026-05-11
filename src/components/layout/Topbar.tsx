@@ -390,7 +390,7 @@ function UserMenu({ ctx, colors }: { ctx: TenantContext; colors: ReturnType<type
           {/* Menu items */}
           <div style={{ padding: 4 }}>
             <a
-              href="/app"
+              href="/app/account"
               onClick={() => setOpen(false)}
               style={menuItemStyle(colors)}
             >
@@ -401,16 +401,14 @@ function UserMenu({ ctx, colors }: { ctx: TenantContext; colors: ReturnType<type
               </div>
             </a>
             <a
-              href="https://sentry.darkrocklabs.com/security"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/app/trust"
               onClick={() => setOpen(false)}
               style={menuItemStyle(colors)}
             >
               <span>🛡️</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Security & Trust</div>
-                <div style={{ fontSize: 10, color: colors.textDim }}>Sub-processors, vuln disclosure</div>
+                <div style={{ fontSize: 10, color: colors.textDim }}>Sub-processors, encryption, compliance</div>
               </div>
             </a>
           </div>

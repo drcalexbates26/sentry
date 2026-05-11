@@ -1979,6 +1979,111 @@ export async function listAccessActivity(filter: ListAccessActivityFilter = {}):
   }));
 }
 
+// ─── Self-service account management ────────────────────────────────
+//
+// Server actions that let the currently-authenticated user edit their own
+// profile and rotate their password. No tenant-admin role required —
+// authentication alone is sufficient for editing your own record.
+
+export interface UpdateMyProfileInput {
+  fullName?: string | null;
+  company?: string | null;
+  jobTitle?: string | null;
+}
+
+export async function updateMyProfile(input: UpdateMyProfileInput): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const data: Record<string, unknown> = {};
+  if (input.fullName !== undefined) data.fullName = input.fullName?.trim() || null;
+  if (input.company !== undefined) data.company = input.company?.trim() || null;
+  if (input.jobTitle !== undefined) data.jobTitle = input.jobTitle?.trim() || null;
+
+  await prisma.user.update({ where: { id: session.authId }, data });
+
+  await logAccessEvent({
+    tenantId: session.activeTenantId ?? session.user!.tenantId,
+    action: "user_profile_updated",
+    actorUserId: session.authId, actorName: session.user!.fullName ?? session.email, actorEmail: session.email,
+    targetUserId: session.authId, targetEmail: session.email, targetName: input.fullName ?? session.user!.fullName ?? session.email,
+    metadata: { self: true },
+  });
+
+  revalidatePath("/app");
+  revalidatePath("/app/account");
+  return { ok: true };
+}
+
+/**
+ * Change the current user's Supabase Auth password. Uses the service-role
+ * client to apply the update; the caller's session is authenticated, so we
+ * trust the request. Future hardening: require current password verification.
+ */
+export async function changeMyPassword(input: { newPassword: string }): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const newPassword = input.newPassword ?? "";
+
+  if (newPassword.length < 12) return { ok: false, error: "Password must be at least 12 characters." };
+  if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    return { ok: false, error: "Password must include upper-case, lower-case, and a digit." };
+  }
+
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase.auth.admin.updateUserById(session.authId, { password: newPassword });
+  if (error) return { ok: false, error: error.message };
+
+  // Invalidate any active provisioning credentials for this user — their
+  // old magic link or temp password should no longer be useful.
+  await prisma.provisioningCredential.updateMany({
+    where: { userId: session.authId, invalidatedAt: null, expiresAt: { gt: new Date() } },
+    data: { invalidatedAt: new Date() },
+  }).catch(() => {});
+
+  // Audit the change but never log the new password value.
+  await logAccessEvent({
+    tenantId: session.activeTenantId ?? session.user!.tenantId,
+    action: "user_profile_updated",
+    actorUserId: session.authId, actorName: session.user!.fullName ?? session.email, actorEmail: session.email,
+    targetUserId: session.authId, targetEmail: session.email, targetName: session.user!.fullName ?? session.email,
+    metadata: { self: true, passwordRotated: true },
+  });
+  return { ok: true };
+}
+
+/** Lightweight account-page query — name, email, role, company, tenant info. */
+export async function getMyAccount(): Promise<{
+  userId: string;
+  email: string;
+  fullName: string | null;
+  company: string | null;
+  jobTitle: string | null;
+  role: string;
+  appRole: string;
+  tenantName: string;
+  tenantSlug: string;
+  invitedAt: string | null;
+  lastSeenAt: string | null;
+}> {
+  const session = await requireUser();
+  const tenantId = session.user!.tenantId;
+  const [me, tenant] = await Promise.all([
+    prisma.user.findUnique({ where: { id: session.authId } }),
+    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } }),
+  ]);
+  return {
+    userId: session.authId,
+    email: session.email,
+    fullName: me?.fullName ?? null,
+    company: me?.company ?? null,
+    jobTitle: me?.jobTitle ?? null,
+    role: me?.role ?? "viewer",
+    appRole: me?.appRole ?? "viewer",
+    tenantName: tenant?.name ?? "—",
+    tenantSlug: tenant?.slug ?? "—",
+    invitedAt: me?.invitedAt?.toISOString() ?? null,
+    lastSeenAt: me?.lastSeenAt?.toISOString() ?? null,
+  };
+}
+
 /**
  * Called from requireUser() at every server-action / route hit. Records one
  * sign-in event per session: when lastSeenAt is null, or was last updated
