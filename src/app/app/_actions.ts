@@ -81,9 +81,19 @@ export async function loadTenantState(): Promise<StateBlob | null> {
   const tenantId = session.activeTenantId ?? session.user!.tenantId;
 
   // Look up the tenant's industry first so we can pull industry-tagged
-  // threat-intel into the initial state hydration.
-  const orgRow = await prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } });
-  const industry = orgRow?.industry ?? null;
+  // threat-intel into the initial state hydration. Industry can be set in
+  // either the typed Organization column or the TenantState JSON blob
+  // (Onboarding writes to the blob first); prefer the blob value because
+  // it reflects the most recent user input.
+  const [orgRow, blobRow] = await Promise.all([
+    prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } }),
+    prisma.tenantState.findUnique({ where: { tenantId }, select: { data: true } }),
+  ]);
+  const blobIndustry = (() => {
+    const data = blobRow?.data as { org?: { industry?: string } } | null;
+    return data?.org?.industry?.trim() || null;
+  })();
+  const industry = blobIndustry || orgRow?.industry || null;
 
   const [
     stateRow, assessRows, stakeholderRows, keySystemRows, vendorRows,
@@ -350,15 +360,39 @@ export async function deleteCustomPlaybook(id: string): Promise<{ ok: boolean; e
 //   • Onboarding when the user finalizes their industry
 //   • Threat Intel module's "Refresh Feeds" button
 
-export async function refreshThreatIntelAction(): Promise<{ ok: boolean; written?: number; items?: unknown[]; error?: string }> {
+export async function refreshThreatIntelAction(): Promise<{ ok: boolean; written?: number; items?: unknown[]; industry?: string | null; error?: string }> {
   const session = await requireUser();
   const tenantId = session.activeTenantId ?? session.user!.tenantId;
-  const org = await prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } });
-  const industry = org?.industry ?? null;
+
+  // Industry can live in two places:
+  //   • Organization.industry (set at tenant creation, mirrored on save)
+  //   • TenantState.data.org.industry (the Zustand-driven snapshot — updated
+  //     immediately when the user edits Onboarding before the typed-table sync runs)
+  // Read both and prefer whichever is more recently meaningful so a just-changed
+  // industry takes effect on the next Refresh click without waiting for sync.
+  const [org, state] = await Promise.all([
+    prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } }),
+    prisma.tenantState.findUnique({ where: { tenantId }, select: { data: true } }),
+  ]);
+  const blobIndustry = (() => {
+    const data = state?.data as { org?: { industry?: string } } | null;
+    return data?.org?.industry?.trim() || null;
+  })();
+  const industry = blobIndustry || org?.industry || null;
+
+  // If the snapshot industry differs from the typed column, sync it now —
+  // keeps the cron's distinct-industry enumeration accurate.
+  if (blobIndustry && org && org.industry !== blobIndustry) {
+    await prisma.organization.updateMany({
+      where: { tenantId },
+      data: { industry: blobIndustry },
+    }).catch(() => {});
+  }
+
   const result = await refreshThreatIntel(industry);
   if (result.error) return { ok: false, error: result.error };
   const items = await readCachedThreatIntel({ industry, limit: 200 });
-  return { ok: true, written: result.written, items };
+  return { ok: true, written: result.written, items, industry };
 }
 
 // ─── saveTenantState ─────────────────────────────────────────────────
