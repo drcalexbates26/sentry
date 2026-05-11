@@ -10,6 +10,11 @@ export interface Playbook {
   erad: string[];
   recover: string[];
   mitre: string[];
+  /** `preset` = shipped in src/data/playbooks.ts and immutable.
+   *  `custom` = tenant-created or tenant-edited clone from CustomPlaybook table. */
+  source?: "preset" | "custom";
+  /** For customs cloned from a preset, the preset id we forked from. */
+  sourcePlaybookId?: string;
 }
 
 export interface PlaybookCase {

@@ -6,6 +6,7 @@ import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ScoreGauge } from "@/components/ui";
 import { GLOBAL_FEEDS, getIndustryFeeds } from "@/lib/threat-intel/feed-config";
 import { generateExecutiveSummary, generateRecommendations } from "@/lib/threat-intel/summary-generator";
+import { refreshThreatIntelAction } from "@/app/app/_actions";
 import type { ThreatIntelItem } from "@/types/threat-intel";
 import type { ThreatIntelStoreItem } from "@/store";
 
@@ -105,13 +106,22 @@ export function ThreatIntelModule() {
   const [sourceFilter, setSourceFilter] = useState("All");
   const [search, setSearch] = useState("");
 
-  const fetchFeeds = useCallback(async () => {
+  const fetchFeeds = useCallback(async (forceRefresh = false) => {
     setThreatIntelLoading(true);
     try {
-      const res = await fetch(`/api/threat-intel?category=${tab}${tab === "industry" && org.industry ? `&industry=${encodeURIComponent(org.industry)}` : ""}`);
-      if (res.ok) {
-        const data = await res.json();
-        setThreatIntelItems(data.items || []);
+      if (forceRefresh) {
+        // Manual refresh button → server action that actually re-runs the
+        // RSS pull, scores, and writes to DB before returning fresh items.
+        const r = await refreshThreatIntelAction();
+        if (r.ok && Array.isArray(r.items)) {
+          setThreatIntelItems(r.items as ThreatIntelStoreItem[]);
+        }
+      } else {
+        const res = await fetch(`/api/threat-intel?category=${tab}${tab === "industry" && org.industry ? `&industry=${encodeURIComponent(org.industry)}` : ""}`);
+        if (res.ok) {
+          const data = await res.json();
+          setThreatIntelItems(data.items || []);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch threat intel:", err);
@@ -385,7 +395,7 @@ export function ThreatIntelModule() {
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {threatIntelLastFetch && <span style={{ color: colors.textDim, fontSize: 8 }}>Last: {threatIntelLastFetch}</span>}
-          <Button variant="outline" size="sm" onClick={fetchFeeds} disabled={threatIntelLoading}>
+          <Button variant="outline" size="sm" onClick={() => fetchFeeds(true)} disabled={threatIntelLoading}>
             {threatIntelLoading ? "Fetching..." : "Refresh Feeds"}
           </Button>
         </div>
@@ -561,7 +571,7 @@ export function ThreatIntelModule() {
           <div style={{ color: colors.textDim, fontSize: 11, maxWidth: 400, margin: "0 auto 16px", lineHeight: 1.5 }}>
             Click &quot;Refresh Feeds&quot; to fetch live threat intelligence from {GLOBAL_FEEDS.length}+ security sources including NVD, CISA, and industry feeds.
           </div>
-          <Button onClick={fetchFeeds} disabled={threatIntelLoading}>{threatIntelLoading ? "Fetching feeds..." : "Refresh Feeds"}</Button>
+          <Button onClick={() => fetchFeeds(true)} disabled={threatIntelLoading}>{threatIntelLoading ? "Fetching feeds..." : "Refresh Feeds"}</Button>
         </Card>
       )}
     </div>

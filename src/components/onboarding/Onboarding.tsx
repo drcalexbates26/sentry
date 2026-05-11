@@ -1,25 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Button, Card, Input, Select, Checkbox, SectionHeader } from "@/components/ui";
 import { TECH_OPTIONS, COMPLIANCE_OPTIONS, INDUSTRIES, ORG_SIZES } from "@/data/tech-options";
+import { refreshThreatIntelAction } from "@/app/app/_actions";
+import type { ThreatIntelStoreItem } from "@/store";
 
 export function Onboarding() {
-  const { onboardDone, org, tech, comp, setOrg, setTech, setComp, setOnboardDone, setPage } = useStore();
+  const { onboardDone, org, tech, comp, setOrg, setTech, setComp, setOnboardDone, setPage, setThreatIntelItems } = useStore();
   const colors = useColors();
   const [step, setStep] = useState(onboardDone ? 4 : 0);
   const [localOrg, setLocalOrg] = useState(org);
   const [localTech, setLocalTech] = useState(tech);
   const [localComp, setLocalComp] = useState(comp);
+  const [, startRefresh] = useTransition();
 
   const save = () => {
+    const industryChanged = localOrg.industry !== org.industry;
     setOrg(localOrg);
     setTech(localTech);
     setComp(localComp);
     setOnboardDone(true);
     setStep(4);
+
+    // Hydrate the threat-intel cache for the chosen industry so the dashboard
+    // and Threat Intel module show industry-tagged feeds immediately.
+    if (industryChanged && localOrg.industry) {
+      startRefresh(async () => {
+        const r = await refreshThreatIntelAction();
+        if (r.ok && Array.isArray(r.items)) {
+          setThreatIntelItems(r.items as ThreatIntelStoreItem[]);
+        }
+      });
+    }
   };
 
   const stps = ["Welcome", "Organization", "Technology", "Compliance", "Complete"];

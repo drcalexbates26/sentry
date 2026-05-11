@@ -48,7 +48,7 @@ export function scoreThreat(item: RawFeedItem): ThreatIntelItem {
     riskScore >= 10 ? "Low" : "Informational";
 
   return {
-    id: item.cveId || `ti_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: stableId(item),
     feedSource: item.feedSource,
     feedCategory: item.feedCategory,
     industryTag: item.industryTag,
@@ -71,6 +71,24 @@ export function scoreThreat(item: RawFeedItem): ThreatIntelItem {
     tags: extractTags(text),
     mitreAttackIds: extractMitre(text),
   };
+}
+
+/**
+ * Deterministic id derived from CVE id or link — lets us upsert on re-fetch
+ * instead of accumulating duplicate rows in ThreatIntel.
+ */
+function stableId(item: RawFeedItem): string {
+  if (item.cveId) return `cve:${item.cveId}`;
+  return `ti:${hash32(item.link || item.title)}`;
+}
+
+function hash32(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
 }
 
 function extractTags(text: string): string[] {

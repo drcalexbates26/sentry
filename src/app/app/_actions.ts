@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { retry } from "@/lib/retry";
 import { appRoleToPrismaRole, recommendedRoleForGroup } from "@/data/role-recommendations";
+import { readCachedThreatIntel, isCacheStale, refreshThreatIntel } from "@/lib/threat-intel/persist";
 import type { UserRole } from "@/store";
 import type * as runtime from "@prisma/client/runtime/client";
 
@@ -79,10 +80,15 @@ export async function loadTenantState(): Promise<StateBlob | null> {
   const session = await requireUser();
   const tenantId = session.activeTenantId ?? session.user!.tenantId;
 
+  // Look up the tenant's industry first so we can pull industry-tagged
+  // threat-intel into the initial state hydration.
+  const orgRow = await prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } });
+  const industry = orgRow?.industry ?? null;
+
   const [
     stateRow, assessRows, stakeholderRows, keySystemRows, vendorRows,
     ticketRows, taskRows, incidentRows, forensicRows, tabletopRows,
-    lessonRows, policyRows,
+    lessonRows, policyRows, threatIntelItems,
   ] = await Promise.all([
     prisma.tenantState.findUnique({ where: { tenantId } }),
     prisma.assessment.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } }),
@@ -96,7 +102,14 @@ export async function loadTenantState(): Promise<StateBlob | null> {
     prisma.tabletop.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } }),
     prisma.lesson.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } }),
     prisma.policy.findMany({ where: { tenantId } }),
+    readCachedThreatIntel({ industry, limit: 200 }),
   ]);
+
+  // If the cache is stale or empty, fire a non-blocking refresh so the next
+  // load picks up fresh data. We never block the user on RSS round-trips.
+  if (threatIntelItems.length === 0 || (await isCacheStale())) {
+    refreshThreatIntel(industry).catch(() => {});
+  }
 
   const blob = (stateRow?.data as StateBlob) ?? null;
 
@@ -215,7 +228,8 @@ export async function loadTenantState(): Promise<StateBlob | null> {
     keySystemRows.length === 0 && vendorRows.length === 0 &&
     ticketRows.length === 0 && taskRows.length === 0 &&
     incidentRows.length === 0 && forensicRows.length === 0 &&
-    tabletopRows.length === 0 && lessonRows.length === 0 && policyRows.length === 0
+    tabletopRows.length === 0 && lessonRows.length === 0 && policyRows.length === 0 &&
+    threatIntelItems.length === 0
   ) return null;
 
   return {
@@ -230,7 +244,121 @@ export async function loadTenantState(): Promise<StateBlob | null> {
     tabletopExercises,
     lessons,
     policiesGen,
+    threatIntelItems,
   };
+}
+
+// ─── Custom playbooks ────────────────────────────────────────────────
+//
+// Preset playbooks in src/data/playbooks.ts are immutable. Editing one
+// creates a CustomPlaybook row that shadows the preset for that tenant.
+// Listing returns presets ∪ customs with `source` set.
+
+export interface CustomPlaybookInput {
+  id?: string;                    // generated server-side if omitted
+  sourcePlaybookId?: string | null;
+  name: string;
+  cat: string;
+  sev: "Low" | "Medium" | "High" | "Critical";
+  icon?: string;
+  desc: string;
+  iocs: string[];
+  contain: string[];
+  erad: string[];
+  recover: string[];
+  mitre: string[];
+}
+
+export interface CustomPlaybookResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+}
+
+export async function listCustomPlaybooks(): Promise<Array<CustomPlaybookInput & { id: string; createdAt: string; updatedAt: string }>> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const rows = await prisma.customPlaybook.findMany({
+    where: { tenantId },
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    sourcePlaybookId: r.sourcePlaybookId ?? null,
+    name: r.name,
+    cat: r.cat,
+    sev: r.sev as CustomPlaybookInput["sev"],
+    icon: r.icon,
+    desc: r.desc,
+    iocs: r.iocs,
+    contain: r.contain,
+    erad: r.erad,
+    recover: r.recover,
+    mitre: r.mitre,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+export async function saveCustomPlaybook(input: CustomPlaybookInput): Promise<CustomPlaybookResult> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+
+  if (!input.name.trim()) return { ok: false, error: "Name is required." };
+  if (!input.cat.trim()) return { ok: false, error: "Category is required." };
+  if (!input.desc.trim()) return { ok: false, error: "Description is required." };
+
+  const id = input.id ?? `cpb_${tenantId.replace(/[^a-z0-9]/gi, "")}_${Date.now().toString(36)}`;
+  const data = {
+    sourcePlaybookId: input.sourcePlaybookId ?? null,
+    name: input.name.trim(),
+    cat: input.cat.trim(),
+    sev: input.sev,
+    icon: input.icon || "📋",
+    desc: input.desc.trim(),
+    iocs: input.iocs.filter((s) => s.trim().length > 0),
+    contain: input.contain.filter((s) => s.trim().length > 0),
+    erad: input.erad.filter((s) => s.trim().length > 0),
+    recover: input.recover.filter((s) => s.trim().length > 0),
+    mitre: input.mitre.filter((s) => s.trim().length > 0),
+  };
+
+  await prisma.customPlaybook.upsert({
+    where: { id },
+    create: { id, tenantId, ...data },
+    update: data,
+  });
+  revalidatePath("/app");
+  return { ok: true, id };
+}
+
+export async function deleteCustomPlaybook(id: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const found = await prisma.customPlaybook.findFirst({ where: { id, tenantId } });
+  if (!found) return { ok: false, error: "Playbook not found." };
+  await prisma.customPlaybook.delete({ where: { id } });
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+// ─── refreshThreatIntelAction ────────────────────────────────────────
+//
+// On-demand refresh server action. Returns the freshly cached items so the
+// caller can re-hydrate Zustand immediately. Called from:
+//   • TenantStateProvider after hydration if stale
+//   • Onboarding when the user finalizes their industry
+//   • Threat Intel module's "Refresh Feeds" button
+
+export async function refreshThreatIntelAction(): Promise<{ ok: boolean; written?: number; items?: unknown[]; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const org = await prisma.organization.findFirst({ where: { tenantId }, select: { industry: true } });
+  const industry = org?.industry ?? null;
+  const result = await refreshThreatIntel(industry);
+  if (result.error) return { ok: false, error: result.error };
+  const items = await readCachedThreatIntel({ industry, limit: 200 });
+  return { ok: true, written: result.written, items };
 }
 
 // ─── saveTenantState ─────────────────────────────────────────────────

@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo, useTransition } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ProgressBar, useModal } from "@/components/ui";
 import { PLAYBOOKS } from "@/data/playbooks";
 import { IR_PHASES } from "@/data/ir-phases";
+import { PlaybookEditor } from "./PlaybookEditor";
+import { listCustomPlaybooks, saveCustomPlaybook, deleteCustomPlaybook, type CustomPlaybookInput } from "@/app/app/_actions";
+import type { Playbook } from "@/types/playbook";
+
+type EditorState =
+  | { mode: "closed" }
+  | { mode: "new" }
+  | { mode: "edit"; pb: Playbook }
+  | { mode: "fork"; pb: Playbook };
 
 export function PlaybooksModule() {
   const { cases, addCase, addTicket, addTickets, addTasks } = useStore();
@@ -14,14 +23,87 @@ export function PlaybooksModule() {
   const [sel, setSel] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");
   const [pbChecks, setPbChecks] = useState<Record<string, boolean>>({});
-  const [assignModal, setAssignModal] = useState<typeof PLAYBOOKS[0] | null>(null);
+  const [assignModal, setAssignModal] = useState<Playbook | null>(null);
   const [incTitle, setIncTitle] = useState("");
   const [incSev, setIncSev] = useState("High");
   const [incAssignee, setIncAssignee] = useState("");
+  const [customs, setCustoms] = useState<Playbook[]>([]);
+  const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
+  const [, startSave] = useTransition();
+  const [saving, setSaving] = useState(false);
 
-  const cats = ["All", ...new Set(PLAYBOOKS.map((p) => p.cat))];
-  const filtered = filter === "All" ? PLAYBOOKS : PLAYBOOKS.filter((p) => p.cat === filter);
+  // Load tenant customs on mount
+  useEffect(() => {
+    listCustomPlaybooks()
+      .then((rows) => setCustoms(rows.map((r): Playbook => ({
+        id: r.id,
+        name: r.name,
+        cat: r.cat,
+        sev: r.sev,
+        icon: r.icon ?? "📋",
+        desc: r.desc,
+        iocs: r.iocs,
+        contain: r.contain,
+        erad: r.erad,
+        recover: r.recover,
+        mitre: r.mitre,
+        source: "custom",
+        sourcePlaybookId: r.sourcePlaybookId ?? undefined,
+      }))))
+      .catch(() => {});
+  }, []);
+
+  // Merge presets + customs; customs that share a sourcePlaybookId hide the
+  // preset (the custom "wins") so edits don't show as duplicates.
+  const allPlaybooks: Playbook[] = useMemo(() => {
+    const overriddenIds = new Set(customs.map((c) => c.sourcePlaybookId).filter(Boolean) as string[]);
+    const presets: Playbook[] = PLAYBOOKS
+      .filter((p) => !overriddenIds.has(p.id))
+      .map((p) => ({ ...p, source: "preset" as const }));
+    return [...customs, ...presets];
+  }, [customs]);
+
+  const cats = ["All", ...new Set(allPlaybooks.map((p) => p.cat))];
+  const filtered = filter === "All" ? allPlaybooks : allPlaybooks.filter((p) => p.cat === filter);
   const activeAssignments = cases.filter((c) => c.playbook && c.status === "Open");
+
+  const handleSave = async (data: CustomPlaybookInput) => {
+    setSaving(true);
+    const res = await saveCustomPlaybook(data);
+    setSaving(false);
+    if (!res.ok) {
+      await modal.showAlert("Save failed", res.error ?? "Unknown error");
+      return;
+    }
+    // Refresh from server so we have authoritative timestamps
+    const fresh = await listCustomPlaybooks();
+    setCustoms(fresh.map((r): Playbook => ({
+      id: r.id, name: r.name, cat: r.cat, sev: r.sev as Playbook["sev"],
+      icon: r.icon ?? "📋", desc: r.desc, iocs: r.iocs, contain: r.contain,
+      erad: r.erad, recover: r.recover, mitre: r.mitre, source: "custom",
+      sourcePlaybookId: r.sourcePlaybookId ?? undefined,
+    })));
+    setEditor({ mode: "closed" });
+    if (res.id) setSel(res.id);
+  };
+
+  const handleDelete = async (pb: Playbook) => {
+    const ok = await modal.showConfirm(
+      "Delete custom playbook?",
+      `This will remove "${pb.name}" from your tenant. ${pb.sourcePlaybookId ? "The original preset will become visible again." : ""}`,
+      "danger",
+    );
+    if (!ok) return;
+    startSave(async () => {
+      const res = await deleteCustomPlaybook(pb.id);
+      if (!res.ok) {
+        await modal.showAlert("Delete failed", res.error ?? "Unknown error");
+        return;
+      }
+      setCustoms((prev) => prev.filter((p) => p.id !== pb.id));
+      setSel(null);
+    });
+  };
 
   const togglePbCheck = (pbId: string, phase: string, idx: number) => {
     const key = `${pbId}_${phase}_${idx}`;
@@ -29,7 +111,7 @@ export function PlaybooksModule() {
   };
 
   const getPbProgress = (pbId: string) => {
-    const pb = PLAYBOOKS.find((p) => p.id === pbId);
+    const pb = allPlaybooks.find((p) => p.id === pbId);
     if (!pb) return 0;
     let total = 0, done = 0;
     [{ k: "iocs", d: pb.iocs }, { k: "contain", d: pb.contain }, { k: "erad", d: pb.erad }, { k: "recover", d: pb.recover }]
@@ -37,7 +119,7 @@ export function PlaybooksModule() {
     return total ? Math.round((done / total) * 100) : 0;
   };
 
-  const assignToIncident = (pb: typeof PLAYBOOKS[0]) => {
+  const assignToIncident = (pb: Playbook) => {
     const caseId = Date.now();
     // Map playbook phases to IR phases
     const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
@@ -101,8 +183,9 @@ export function PlaybooksModule() {
   };
 
   if (sel) {
-    const pb = PLAYBOOKS.find((p) => p.id === sel);
+    const pb = allPlaybooks.find((p) => p.id === sel);
     if (!pb) return null;
+    const isCustom = pb.source === "custom";
     const progress = getPbProgress(pb.id);
     const phases = [
       { k: "iocs", t: "Indicators of Compromise", sub: "Verify each IOC against your environment", d: pb.iocs, c: colors.red, ico: "🔍" },
@@ -134,8 +217,21 @@ export function PlaybooksModule() {
                 const txt = `SENTRY PLAYBOOK: ${pb.name}\nProgress: ${progress}%\n\n${phases.map((ph) => `${ph.t}\n${ph.d.map((s, i) => `  [${pbChecks[`${pb.id}_${ph.k}_${i}`] ? "✓" : " "}] ${s}`).join("\n")}`).join("\n\n")}\n\nMITRE: ${pb.mitre.join(", ")}`;
                 const blob = new Blob([txt], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `Sentry_Playbook_${pb.name.replace(/\s/g, "_")}.txt`; a.click();
               }}>Export Checklist</Button>
+              {isCustom ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "edit", pb })}>Edit</Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(pb)} style={{ color: colors.red }}>Delete</Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "fork", pb })}>Duplicate & Edit</Button>
+              )}
             </div>
           </div>
+          {pb.source === "custom" && (
+            <div style={{ marginTop: 8, padding: "6px 10px", background: colors.teal + "12", border: `1px solid ${colors.teal}40`, borderRadius: 6, fontSize: 10, color: colors.teal }}>
+              Custom playbook{pb.sourcePlaybookId ? ` (forked from "${PLAYBOOKS.find((p) => p.id === pb.sourcePlaybookId)?.name ?? "preset"}")` : ""}
+            </div>
+          )}
           <div style={{ marginTop: 12 }}><ProgressBar value={progress} color={progress >= 100 ? colors.green : colors.teal} height={6} /></div>
         </Card>
 
@@ -198,12 +294,27 @@ export function PlaybooksModule() {
 
   return (
     <div>
-      <SectionHeader sub={`${PLAYBOOKS.length} scenario playbooks with interactive checklists and incident assignment`}>Playbooks</SectionHeader>
+      <SectionHeader sub={`${allPlaybooks.length} scenario playbooks · ${customs.length} custom · interactive checklists with incident assignment`}>Playbooks</SectionHeader>
+
+      {editor.mode !== "closed" && (
+        <PlaybookEditor
+          initial={editor.mode === "edit" ? editor.pb : undefined}
+          forkFrom={editor.mode === "fork" ? editor.pb : undefined}
+          onSave={handleSave}
+          onCancel={() => setEditor({ mode: "closed" })}
+          saving={saving}
+        />
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <Button size="sm" onClick={() => setEditor({ mode: "new" })}>+ New Playbook</Button>
+      </div>
+
       {activeAssignments.length > 0 && (
         <Card style={{ marginBottom: 14, borderLeft: `3px solid ${colors.red}` }}>
           <h3 style={{ color: colors.white, marginTop: 0, fontSize: 13 }}>Active Playbook Assignments</h3>
           {activeAssignments.map((a, i) => {
-            const pb = PLAYBOOKS.find((p) => p.id === a.playbook);
+            const pb = allPlaybooks.find((p) => p.id === a.playbook);
             return (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -220,7 +331,7 @@ export function PlaybooksModule() {
       <div style={{ display: "flex", gap: 3, marginBottom: 16, flexWrap: "wrap" }}>
         {cats.map((c) => (
           <Button key={c} variant={filter === c ? "primary" : "secondary"} size="sm" onClick={() => setFilter(c)}>
-            {c} ({c === "All" ? PLAYBOOKS.length : PLAYBOOKS.filter((p) => p.cat === c).length})
+            {c} ({c === "All" ? allPlaybooks.length : allPlaybooks.filter((p) => p.cat === c).length})
           </Button>
         ))}
       </div>
@@ -235,7 +346,10 @@ export function PlaybooksModule() {
                   <span style={{ fontSize: 18 }}>{pb.icon}</span>
                   <h4 style={{ color: colors.white, margin: 0, fontSize: 12 }}>{pb.name}</h4>
                 </div>
-                {isAssigned && <Badge color={colors.red}>ACTIVE</Badge>}
+                <div style={{ display: "flex", gap: 4 }}>
+                  {pb.source === "custom" && <Badge color={colors.teal}>CUSTOM</Badge>}
+                  {isAssigned && <Badge color={colors.red}>ACTIVE</Badge>}
+                </div>
               </div>
               <div style={{ display: "flex", gap: 3, marginBottom: 6, flexWrap: "wrap" }}>
                 <Badge>{pb.cat}</Badge>
