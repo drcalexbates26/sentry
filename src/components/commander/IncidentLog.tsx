@@ -3,18 +3,29 @@
 import { useMemo } from "react";
 import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
-import { Badge, Button, Card, ProgressBar, SectionHeader } from "@/components/ui";
+import { Badge, Button, Card, ProgressBar, SectionHeader, useModal } from "@/components/ui";
 import { IR_PHASES } from "@/data/ir-phases";
 import { STAKEHOLDER_GROUPS } from "@/data/stakeholder-groups";
 import type { StakeholderPerson } from "@/types/stakeholder";
 import { generateIncidentReport } from "@/lib/incident-report-generator";
+import { generateBig4Report, openBig4ReportWindow } from "@/lib/big4-report-generator";
+
+// Human-readable labels for closure dispositions captured in Commander.
+const DISPOSITION_LABEL: Record<string, string> = {
+  Resolved: "Resolved",
+  FalsePositive: "False Positive",
+  DeEscalated: "De-escalated → Security Event",
+  Duplicate: "Duplicate",
+};
 
 export function IncidentLog() {
   const {
     incidentLog, tickets, tasks, activeIncident, stakeholders,
-    forensicLogs, lessons, setPage,
+    forensicLogs, lessons, setPage, org,
+    updateIncidentLogEntry, deleteIncidentLogEntry, updateTicket,
   } = useStore();
   const colors = useColors();
+  const modal = useModal();
 
   const allIncidents = useMemo(() => {
     return incidentLog.map((entry) => {
@@ -102,16 +113,122 @@ export function IncidentLog() {
                 <Badge color={colors.blue}>TKT-{inc.masterTicketId}</Badge>
                 <Badge color={colors.textDim}>Declared: {inc.declaredAt}</Badge>
                 {inc.closedAt && <Badge color={colors.green}>Closed: {inc.closedAt}</Badge>}
+                {inc.status === "Closed" && inc.disposition && (
+                  <Badge color={
+                    inc.disposition === "FalsePositive" ? colors.yellow :
+                    inc.disposition === "DeEscalated" ? colors.blue :
+                    inc.disposition === "Duplicate" ? colors.purple : colors.green
+                  }>{DISPOSITION_LABEL[inc.disposition]}</Badge>
+                )}
+                {inc.status === "Closed" && inc.closedPhase && (() => {
+                  const p = IR_PHASES.find((x) => x.id === inc.closedPhase);
+                  return p ? <Badge color={colors.teal}>Closed in {p.ico} {p.n}</Badge> : null;
+                })()}
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => {
-              const report = generateIncidentReport(inc, IR_PHASES, STAKEHOLDER_GROUPS, stakeholders);
-              const blob = new Blob([report], { type: "text/plain" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a"); a.href = url;
-              a.download = `Sentry_Incident_Report_${inc.title.replace(/\s/g, "_")}.txt`;
-              a.click();
-            }}>Export Report</Button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Button variant="outline" size="sm" onClick={() => {
+                const report = generateIncidentReport(inc, IR_PHASES, STAKEHOLDER_GROUPS, stakeholders);
+                const blob = new Blob([report], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url;
+                a.download = `Sentry_Incident_Report_${inc.title.replace(/\s/g, "_")}.txt`;
+                a.click();
+              }}>Operational Report</Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                // Big-4-styled executive summary. Opens in a new window so the
+                // user can save as PDF or share with leadership.
+                const allTickets = [
+                  ...(inc.masterTicket ? [{ id: inc.masterTicket.id, title: inc.masterTicket.title, status: inc.masterTicket.status, phase: inc.masterTicket.phase || "", assignee: inc.masterTicket.assignee || "", created: inc.masterTicket.created }] : []),
+                  ...inc.childTickets.map((t) => ({ id: t.id, title: t.title, status: t.status, phase: t.phase || "", assignee: t.assignee || "", created: t.created })),
+                ];
+                const html = generateBig4Report({
+                  entry: {
+                    incidentId: inc.incidentId,
+                    title: inc.title,
+                    severity: inc.severity,
+                    masterTicketId: inc.masterTicketId,
+                    declaredAt: inc.declaredAt,
+                    closedAt: inc.closedAt,
+                    status: inc.status,
+                    disposition: inc.disposition,
+                    closedPhase: inc.closedPhase,
+                    closureRationale: inc.closureRationale,
+                    summary: inc.summary,
+                  },
+                  // Use the Commander-side incident state if this is the active one,
+                  // otherwise the rich data isn't available post-close.
+                  incident: activeIncident && activeIncident.title === inc.title ? activeIncident : null,
+                  tasks: inc.incidentTasks,
+                  forensics: inc.incidentForensics,
+                  lessons: inc.incidentLessons,
+                  tickets: allTickets,
+                  irPhases: IR_PHASES,
+                  stakeholders,
+                  org: { name: org.name || "Organization", industry: org.industry },
+                });
+                openBig4ReportWindow(html);
+              }}>Executive Summary</Button>
+              <Button variant="ghost" size="sm" onClick={() => {
+                // Edit log entry metadata (title / severity / summary / disposition / closed-phase).
+                // Active incidents only expose title + severity since the close metadata is captured at close time.
+                const isClosed = inc.status === "Closed";
+                const dispositionOptions = Object.entries(DISPOSITION_LABEL).map(([, label]) => label);
+                const phaseOptions = IR_PHASES.map((p) => `${p.ico} ${p.n}`);
+                const currentDispLabel = inc.disposition ? DISPOSITION_LABEL[inc.disposition] : "";
+                const currentPhaseLabel = inc.closedPhase
+                  ? (() => { const p = IR_PHASES.find((x) => x.id === inc.closedPhase); return p ? `${p.ico} ${p.n}` : ""; })()
+                  : "";
+                modal.showPrompt(
+                  "Edit Incident Log Entry",
+                  [
+                    { key: "title", label: "Title", type: "text", required: true, defaultValue: inc.title },
+                    { key: "severity", label: "Severity", type: "select", required: true,
+                      options: ["Low", "Medium", "High", "Critical"], defaultValue: inc.severity },
+                    { key: "summary", label: "Summary / Notes", type: "textarea",
+                      placeholder: "Editable narrative describing the incident.", defaultValue: inc.summary || "" },
+                    ...(isClosed ? [
+                      { key: "disposition", label: "Disposition", type: "select" as const,
+                        options: dispositionOptions, defaultValue: currentDispLabel || "Resolved" },
+                      { key: "phase", label: "Closed in Phase", type: "select" as const,
+                        options: phaseOptions, defaultValue: currentPhaseLabel || phaseOptions[1] },
+                      { key: "rationale", label: "Closure Rationale", type: "textarea" as const,
+                        defaultValue: inc.closureRationale || "" },
+                    ] : []),
+                  ],
+                  "Edit the fields below. Closed-incident dispositions feed post-mortem analytics."
+                ).then((r) => {
+                  if (!r) return;
+                  const updates: Record<string, unknown> = {
+                    title: r.title.trim(),
+                    severity: r.severity,
+                    summary: r.summary.trim() || undefined,
+                  };
+                  if (isClosed) {
+                    const dispEntry = Object.entries(DISPOSITION_LABEL).find(([, label]) => label === r.disposition);
+                    if (dispEntry) updates.disposition = dispEntry[0] as "Resolved" | "FalsePositive" | "DeEscalated" | "Duplicate";
+                    const phaseEntry = IR_PHASES.find((p) => `${p.ico} ${p.n}` === r.phase);
+                    if (phaseEntry) updates.closedPhase = phaseEntry.id;
+                    updates.closureRationale = (r.rationale || "").trim() || undefined;
+                  }
+                  updateIncidentLogEntry(inc.incidentId, updates);
+                });
+              }}>Edit</Button>
+              <Button variant="ghost" size="sm" onClick={() => {
+                modal.showConfirm(
+                  "Delete Incident Log Entry",
+                  `Permanently remove "${inc.title}" from the Incident Log? The linked master ticket TKT-${inc.masterTicketId} will remain. This cannot be undone.`,
+                  "danger"
+                ).then((confirmed) => {
+                  if (!confirmed) return;
+                  deleteIncidentLogEntry(inc.incidentId);
+                  // Also mark the master ticket closed so it doesn't dangle as Active.
+                  if (inc.masterTicket && inc.masterTicket.status !== "Closed") {
+                    updateTicket(inc.masterTicketId, { status: "Closed" });
+                  }
+                });
+              }}>Delete</Button>
+            </div>
           </div>
 
           {/* Auto-Discovery: Executive Summary */}
@@ -220,6 +337,70 @@ export function IncidentLog() {
               }
             </div>
           </div>
+
+          {/* Editable Summary (free-text) */}
+          {inc.summary && (
+            <div style={{ background: colors.obsidianM, borderRadius: 8, padding: 12, marginBottom: 12, borderLeft: `2px solid ${colors.teal}` }}>
+              <div style={{ fontSize: 9, color: colors.teal, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Incident Summary</div>
+              <p style={{ color: colors.text, fontSize: 11, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{inc.summary}</p>
+            </div>
+          )}
+
+          {/* Closed-in-Phase Tracker */}
+          {inc.status === "Closed" && (() => {
+            const closedPhaseId = inc.closedPhase;
+            const closedPhase = closedPhaseId ? IR_PHASES.find((p) => p.id === closedPhaseId) : null;
+            const dispLabel = inc.disposition ? DISPOSITION_LABEL[inc.disposition] : "Resolved";
+            const dispColor =
+              inc.disposition === "FalsePositive" ? colors.yellow :
+              inc.disposition === "DeEscalated" ? colors.blue :
+              inc.disposition === "Duplicate" ? colors.purple : colors.green;
+            return (
+              <div style={{ background: colors.obsidianM, borderRadius: 8, padding: 12, marginTop: 12, marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                    Closure Tracker
+                  </div>
+                  <Badge color={dispColor}>{dispLabel}</Badge>
+                </div>
+                {/* Phase row: highlights the phase the incident was closed in */}
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
+                  {IR_PHASES.map((ph, i) => {
+                    const isClosePhase = closedPhaseId === ph.id;
+                    const closeIdx = closedPhase ? IR_PHASES.findIndex((p) => p.id === closedPhase.id) : IR_PHASES.length - 1;
+                    const reached = i <= closeIdx;
+                    return (
+                      <div key={ph.id} style={{ flex: 1, textAlign: "center" }}>
+                        <div style={{
+                          height: 4, borderRadius: 2,
+                          background: reached ? (isClosePhase ? dispColor : colors.teal) : colors.panelBorder,
+                          marginBottom: 4,
+                        }} />
+                        <div style={{
+                          fontSize: 8, color: isClosePhase ? dispColor : reached ? colors.text : colors.textDim,
+                          fontWeight: isClosePhase ? 800 : 600,
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+                        }}>
+                          <span>{ph.ico}</span>
+                          <span>{ph.n}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 6 }}>
+                  Closed in <strong style={{ color: dispColor }}>{closedPhase ? closedPhase.n : "—"}</strong>
+                  {inc.closedAt && <> on <span style={{ color: colors.text }}>{inc.closedAt}</span></>}
+                  .
+                </div>
+                {inc.closureRationale && (
+                  <div style={{ fontSize: 10, color: colors.text, marginTop: 6, fontStyle: "italic", lineHeight: 1.5 }}>
+                    “{inc.closureRationale}”
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Child Tickets */}
           {inc.childTickets.length > 0 && (

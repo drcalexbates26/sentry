@@ -384,17 +384,15 @@ export function PoliciesModule() {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <colgroup>
-                <col style={{ width: "30%" }} />
                 <col style={{ width: "32%" }} />
-                <col style={{ width: "16%" }} />
+                <col style={{ width: "42%" }} />
+                <col style={{ width: "14%" }} />
                 <col style={{ width: "12%" }} />
-                <col style={{ width: "10%" }} />
               </colgroup>
               <thead>
                 <tr style={{ background: colors.obsidianM, borderBottom: `1px solid ${colors.panelBorder}` }}>
                   <th style={tableHeadStyle(colors)}>Policy</th>
                   <th style={tableHeadStyle(colors)}>Description</th>
-                  <th style={tableHeadStyle(colors)}>Frameworks</th>
                   <th style={tableHeadStyle(colors)}>Status</th>
                   <th style={{ ...tableHeadStyle(colors), textAlign: "right" }}>Action</th>
                 </tr>
@@ -445,17 +443,6 @@ export function PoliciesModule() {
                         <span style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                           {t.d}
                         </span>
-                      </td>
-                      <td style={tableCellStyle()}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                          {t.frameworks.map((fw) => (
-                            <span key={fw} style={{
-                              display: "inline-block", padding: "2px 6px", borderRadius: 4,
-                              background: colors.obsidianM, color: colors.textMuted,
-                              fontSize: 9, fontWeight: 600,
-                            }}>{fw}</span>
-                          ))}
-                        </div>
                       </td>
                       <td style={tableCellStyle()}>
                         <div>{statusBadge}</div>
@@ -903,26 +890,6 @@ function CoverageMatrix({ policies, colors }: { policies: PolicyDTO[]; colors: R
       <p style={{ color: colors.textMuted, fontSize: 11, margin: "3px 0 14px", maxWidth: 740, lineHeight: 1.5 }}>
         Cross-reference each policy template against the frameworks it provides evidence for. A framework is <strong>covered</strong> when at least one mapped policy has a published version.
       </p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginBottom: 18 }}>
-        {FRAMEWORK_OPTIONS.map((fw) => {
-          const mapped = POLICY_TEMPLATES.filter((t) => t.frameworks.includes(fw));
-          const live = mapped.filter((t) => statusByTemplate[t.id] === "live").length;
-          const draft = mapped.filter((t) => statusByTemplate[t.id] === "draft").length;
-          const tone = live > 0 ? colors.green : draft > 0 ? colors.orange : colors.red;
-          return (
-            <div key={fw} style={{ background: colors.obsidianM, borderRadius: 8, padding: 12, borderLeft: `3px solid ${tone}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: colors.white, fontSize: 12, fontWeight: 700 }}>{fw}</span>
-                <Badge color={tone}>{live > 0 ? "Covered" : draft > 0 ? "In Progress" : "Gap"}</Badge>
-              </div>
-              <div style={{ color: colors.textMuted, fontSize: 10, marginTop: 4 }}>
-                {live} live · {draft} in flight · {mapped.length - live - draft} not started
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
       {/* Detailed matrix */}
       <div style={{ overflowX: "auto" }}>

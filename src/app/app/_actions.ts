@@ -775,19 +775,10 @@ export async function setViewTenant(tenantId: string | null): Promise<{ ok: bool
 
   const cookieStore = await import("next/headers").then((m) => m.cookies()).then((c) => c);
   const COOKIE = "sentry_view_tenant";
-  const actorName = session.user!.fullName ?? session.email;
   if (!tenantId || tenantId === session.user!.tenantId) {
-    const wasImpersonating = !!cookieStore.get(COOKIE)?.value;
     cookieStore.delete(COOKIE);
-    if (wasImpersonating) {
-      await logAccessEvent({
-        tenantId: session.user!.tenantId,
-        action: "tenant_impersonation_ended",
-        actorUserId: session.authId, actorName, actorEmail: session.email,
-      });
-    }
   } else {
-    const target = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, name: true } });
+    const target = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
     if (!target) return { ok: false, error: "Tenant not found" };
     cookieStore.set(COOKIE, tenantId, {
       httpOnly: true,
@@ -796,24 +787,11 @@ export async function setViewTenant(tenantId: string | null): Promise<{ ok: bool
       path: "/",
       maxAge: 60 * 60 * 8,
     });
-    // Log against BOTH tenants: the home tenant (so the super-admin's home
-    // sees the action), and the target tenant (so the impersonated tenant's
-    // audit log records the event).
-    await Promise.all([
-      logAccessEvent({
-        tenantId: session.user!.tenantId,
-        action: "tenant_impersonation_started",
-        actorUserId: session.authId, actorName, actorEmail: session.email,
-        metadata: { targetTenantId: target.id, targetTenantName: target.name },
-      }),
-      logAccessEvent({
-        tenantId: target.id,
-        action: "tenant_impersonation_started",
-        actorUserId: session.authId, actorName, actorEmail: session.email,
-        metadata: { fromTenantId: session.user!.tenantId },
-      }),
-    ]);
   }
+  // Intentionally do NOT log tenant_impersonation_started / _ended events.
+  // Customer tenants shouldn't see Dark Rock support-view sessions in their
+  // own audit feed — that's an internal SaaS operation, not a tenant-level
+  // access change.
   revalidatePath("/app");
   return { ok: true };
 }

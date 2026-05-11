@@ -27,7 +27,7 @@ const defaultInc: Incident = {
 };
 
 export function Commander() {
-  const { activeIncident, setActiveIncident, addCase, addTicket, addTickets, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification, tasks, addTasks } = useStore();
+  const { activeIncident, setActiveIncident, addCase, addTicket, addTickets, addIncidentLogEntry, recordIncidentMetric, updateIncidentLogEntry, updateTicket, incidentLog, stakeholders, addNotification, tasks, addTasks, addTask, updateTask, deleteTask } = useStore();
   const colors = useColors();
   const modal = useModal();
   const [inc, setInc] = useState<Incident>(activeIncident || { ...defaultInc });
@@ -80,6 +80,42 @@ export function Commander() {
       return () => clearTimeout(timeout);
     }
   }, [inc, editing, setActiveIncident]);
+
+  // One-shot migration: legacy demo-seed / older incidents stored workstream
+  // tasks on inc.workstreams[k].tasks. The Workstreams tab now reads from the
+  // global Tasks store so the two views stay in sync, so we lift legacy
+  // entries into global tasks once per incident load and clear them locally.
+  useEffect(() => {
+    if (editing || !inc.id) return;
+    const legacy: { ws: string; idx: number; text: string; done: boolean; ts: string }[] = [];
+    Object.entries(inc.workstreams || {}).forEach(([ws, d]) => {
+      (d?.tasks || []).forEach((t, idx) => legacy.push({ ws, idx, text: t.text, done: t.done, ts: t.ts }));
+    });
+    if (legacy.length === 0) return;
+    // Skip if anything already migrated (avoid loops).
+    const alreadyMigrated = tasks.some((t) => t.incidentId === inc.id && t.workstream);
+    if (alreadyMigrated) return;
+    const baseId = Date.now();
+    addTasks(legacy.map((l, i) => ({
+      id: baseId + i,
+      title: l.text,
+      priority: "Medium" as const,
+      status: (l.done ? "Done" : "Backlog") as "Done" | "Backlog",
+      assignee: "",
+      source: `Workstream: ${l.ws}`,
+      updates: [],
+      created: l.ts,
+      incidentId: inc.id,
+      workstream: l.ws,
+    })));
+    // Clear local workstream task arrays so the migration is one-shot.
+    setInc((p) => ({
+      ...p,
+      workstreams: Object.fromEntries(
+        Object.entries(p.workstreams || {}).map(([k, v]) => [k, { ...v, tasks: [] }])
+      ),
+    }));
+  }, [inc.id, editing, inc.workstreams, tasks, addTasks]);
   const addTL = (event: string) => setInc((p) => ({ ...p, timeline: [...p.timeline, { time: new Date().toLocaleString(), event, elapsed }] }));
   // Defensive: legacy data may have members as strings; normalize to hours=0
   // so the sum stays a number instead of NaN. Same shape-shim as the render.
@@ -227,8 +263,12 @@ export function Commander() {
             }, stakeholders);
             copyNotification(notif);
             addNotification({ id: Date.now(), event: "incident.declared", recipients: notif.recipients, subject: notif.subject, body: notif.body, timestamp: new Date().toLocaleString(), privileged: notif.privileged, module: "Commander" });
-            // Save and activate
-            save(inc);
+            // Save and activate. Stamp the incident id so downstream filters
+            // (IR Phase progression, Workstreams ↔ Tasks sync) can correlate
+            // global TaskItems back to this incident.
+            const declared: Incident = { ...inc, id: `INC-${masterTicketId}` };
+            setInc(declared);
+            save(declared);
             setEditing(false);
             addTL("Incident declared: " + inc.title);
           }} disabled={!inc.title || !inc.startTime}>
@@ -391,36 +431,64 @@ export function Commander() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>IR Phases — Task Progression</div>
               {(() => {
-                const incTasks = tasks.filter((t) => t.source?.includes("Playbook:") || t.irPhase);
+                // Sourced purely from the global Tasks list, filtered to this
+                // incident. No more manual phase slider — phase progress is
+                // derived from real Task completion, single source of truth.
+                const incTasks = tasks.filter((t) => t.incidentId === inc.id && t.irPhase);
                 const done = incTasks.filter((t) => t.status === "Done").length;
                 const total = incTasks.length;
-                return total > 0 ? <Badge color={done === total ? colors.green : colors.teal}>{done}/{total} complete</Badge> : null;
+                return total > 0
+                  ? <Badge color={done === total ? colors.green : colors.teal}>{done}/{total} complete</Badge>
+                  : <Badge color={colors.textDim}>No tasks yet</Badge>;
               })()}
             </div>
+            <div style={{ color: colors.textDim, fontSize: 9, fontStyle: "italic", marginBottom: 6 }}>
+              Phase progress is derived from the global Tasks board. Add tasks here or in the Tasks module — they stay in sync.
+            </div>
             {IR_PHASES.map((ph) => {
-              const phaseTasks = tasks.filter((t) => t.irPhase === ph.id);
+              const phaseTasks = tasks.filter((t) => t.incidentId === inc.id && t.irPhase === ph.id);
               const done = phaseTasks.filter((t) => t.status === "Done").length;
               const total = phaseTasks.length;
-              const pct = total > 0 ? Math.round((done / total) * 100) : (inc.phaseStatus[ph.id] || 0);
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
               const cl = pct >= 100 ? colors.green : pct > 0 ? colors.teal : colors.textDim;
               const isExpanded = expandedPhase === ph.id;
+              const addTaskForPhase = async () => {
+                const r = await modal.showPrompt(
+                  `Add Task — ${ph.n}`,
+                  [
+                    { key: "title", label: "Task Title", required: true, placeholder: `e.g. ${ph.steps?.[0] || "Investigate alert"}` },
+                    { key: "assignee", label: "Assignee", placeholder: "Optional — owner name" },
+                    { key: "priority", label: "Priority", type: "select", options: ["Critical", "High", "Medium", "Low"], defaultValue: "Medium" },
+                  ],
+                  `New task will be added to the global Tasks board and tagged to ${ph.n}.`
+                );
+                if (!r) return;
+                addTask({
+                  id: Date.now(),
+                  title: r.title.trim(),
+                  priority: (r.priority || "Medium") as "Critical" | "High" | "Medium" | "Low",
+                  status: "Backlog",
+                  assignee: r.assignee?.trim() || "",
+                  source: `Commander — ${ph.n}`,
+                  updates: [],
+                  created: new Date().toLocaleDateString(),
+                  irPhase: ph.id,
+                  incidentId: inc.id,
+                });
+                addTL(`Task added (${ph.n}): ${r.title.trim()}`);
+              };
               return (
                 <div key={ph.id}>
-                  <div onClick={() => setExpandedPhase(isExpanded ? null : ph.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}`, cursor: total > 0 ? "pointer" : "default" }}>
-                    <span style={{ fontSize: 9 }}>{ph.ico}</span>
-                    <span style={{ color: colors.text, fontSize: 10, width: 90, fontWeight: isExpanded ? 700 : 400 }}>{ph.n}</span>
-                    <div style={{ flex: 1 }}><ProgressBar value={pct} color={cl} height={4} /></div>
-                    {total > 0 ? (
-                      <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 55, textAlign: "right" }}>{done}/{total} ({pct}%)</span>
-                    ) : (
-                      <>
-                        <input type="range" min="0" max="100" value={pct}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => { const v = parseInt(e.target.value); setInc((p) => ({ ...p, phaseStatus: { ...p.phaseStatus, [ph.id]: v } })); if (v === 100) addTL(`Phase complete: ${ph.n}`); }}
-                          style={{ width: 45, accentColor: colors.teal }} />
-                        <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 28, textAlign: "right" }}>{pct}%</span>
-                      </>
-                    )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                    <div onClick={() => total > 0 && setExpandedPhase(isExpanded ? null : ph.id)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, cursor: total > 0 ? "pointer" : "default" }}>
+                      <span style={{ fontSize: 9 }}>{ph.ico}</span>
+                      <span style={{ color: colors.text, fontSize: 10, width: 90, fontWeight: isExpanded ? 700 : 400 }}>{ph.n}</span>
+                      <div style={{ flex: 1 }}><ProgressBar value={pct} color={cl} height={4} /></div>
+                      <span style={{ color: cl, fontWeight: 700, fontSize: 9, width: 55, textAlign: "right" }}>
+                        {total > 0 ? `${done}/${total} (${pct}%)` : "—"}
+                      </span>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={addTaskForPhase}>+ Task</Button>
                   </div>
                   {/* Expanded task list */}
                   {isExpanded && total > 0 && (
@@ -432,9 +500,9 @@ export function Commander() {
                             <div style={{ flex: 1 }}>
                               <span style={{ color: t.status === "Done" ? colors.textDim : colors.text, fontSize: 10, textDecoration: t.status === "Done" ? "line-through" : "none" }}>{t.title}</span>
                               {t.assignee && <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 6 }}>({t.assignee})</span>}
+                              {t.workstream && <span style={{ color: colors.teal, fontSize: 8, marginLeft: 6 }}>·{t.workstream}</span>}
                             </div>
                             <select value={t.status} onChange={(e) => {
-                              const { updateTask } = useStore.getState();
                               updateTask(t.id, { status: e.target.value as "Backlog" | "In Progress" | "In Review" | "Done" });
                             }} style={{ padding: "2px 5px", background: colors.obsidian, border: `1px solid ${colors.panelBorder}`, borderRadius: 3, color: statusC, fontSize: 8, fontFamily: "inherit" }}>
                               <option>Backlog</option><option>In Progress</option><option>In Review</option><option>Done</option>
@@ -449,29 +517,22 @@ export function Commander() {
             })}
           </Card>
 
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Team</div>
-              <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Team Member", [{ key: "name", label: "Name", required: true }, { key: "role", label: "Role", placeholder: "Responder", defaultValue: "Responder" }]); if (r) { setInc((p) => ({ ...p, members: [...p.members, { name: r.name, role: r.role || "Responder", hours: 0 }] })); addTL(`${r.name} joined`); } }}>+ Add</Button>
-            </div>
-            {inc.members.map((raw, i) => {
-              // Older datasets stored members as plain strings ("Jane Doe").
-              // Normalize to the typed shape so a legacy demo / tenant blob
-              // doesn't blow up the whole module.
-              const m = typeof raw === "string"
-                ? { name: raw, role: "Responder", hours: 0 }
-                : { name: raw.name ?? "Unknown", role: raw.role ?? "Responder", hours: typeof raw.hours === "number" ? raw.hours : 0 };
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{m.name}</span>
-                    <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 4 }}>{m.role}</span>
+          {/* Team management lives in the Roster tab — see below. The legacy
+              inline Team card is intentionally removed; Roster handles Name /
+              Title / Role / Email / Phone / Rate / Hours cleanly. */}
+          {inc.members.length > 0 && (
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Team</div>
+                  <div style={{ color: colors.text, fontSize: 11, marginTop: 4 }}>
+                    {inc.members.length} responder{inc.members.length === 1 ? "" : "s"} on the incident
                   </div>
-                  <Input value={String(m.hours)} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), hours: parseFloat(v) || 0 } : x) }))} type="number" style={{ marginBottom: 0, width: 55 }} />
                 </div>
-              );
-            })}
-          </Card>
+                <Button size="sm" variant="outline" onClick={() => setTab("roster")}>Open Roster →</Button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
@@ -881,28 +942,93 @@ export function Commander() {
         </div>
       )}
 
-      {/* Workstreams / Notifications / Summaries - simplified */}
+      {/* Workstreams — backed by the global Tasks store so the Workstreams tab
+          and the Tasks module are always in sync. Each task is a TaskItem with
+          { incidentId, workstream } tags. */}
       {tab === "workstreams" && (
         <div>
+          <div style={{ color: colors.textDim, fontSize: 10, fontStyle: "italic", marginBottom: 8 }}>
+            Workstream tasks live in the global Tasks board — adding here adds them there, and vice versa. Filter the Tasks module by incident to see them all together.
+          </div>
           {[{ k: "Security", r: "Security Engineering" }, { k: "Legal", r: "Legal Counsel" }, { k: "Executive", r: "Executive Leadership" }, { k: "Insurance", r: "Cyber Insurance" }, { k: "Forensics", r: "Forensic Contact" }, { k: "HR", r: "Human Resources" }, { k: "PR", r: "Public Relations" }, { k: "Privacy", r: "Privacy Officer" }].map((ws) => {
-            const d = inc.workstreams[ws.k] || { tasks: [], docs: [], accomplishments: [], risks: [] };
-            const dn = d.tasks.filter((t) => t.done).length;
-            const pct = d.tasks.length ? Math.round((dn / d.tasks.length) * 100) : 0;
+            const wsTasks = tasks.filter((t) => t.incidentId === inc.id && t.workstream === ws.k);
+            const dn = wsTasks.filter((t) => t.status === "Done").length;
+            const total = wsTasks.length;
+            const pct = total ? Math.round((dn / total) * 100) : 0;
             return (
               <Card key={ws.k} style={{ marginBottom: 10, borderLeft: `3px solid ${pct >= 100 ? colors.green : pct > 0 ? colors.teal : colors.textDim}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <div>
                     <div style={{ color: colors.white, fontSize: 11, fontWeight: 700 }}>{ws.r}</div>
-                    <div style={{ display: "flex", gap: 4, marginTop: 2 }}><Badge color={pct >= 100 ? colors.green : colors.teal}>{pct}%</Badge><Badge color={colors.textDim}>{dn}/{d.tasks.length}</Badge></div>
+                    <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+                      <Badge color={pct >= 100 ? colors.green : colors.teal}>{pct}%</Badge>
+                      <Badge color={colors.textDim}>{dn}/{total}</Badge>
+                    </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={async () => { const r = await modal.showPrompt(`Add Task — ${ws.r}`, [{ key: "task", label: "Task Description", required: true }]); if (r) setInc((p) => ({ ...p, workstreams: { ...p.workstreams, [ws.k]: { ...d, tasks: [...d.tasks, { text: r.task, done: false, ts: new Date().toLocaleString() }] } } })); }}>+ Task</Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    const r = await modal.showPrompt(
+                      `Add Task — ${ws.r}`,
+                      [
+                        { key: "task", label: "Task Description", required: true },
+                        { key: "assignee", label: "Assignee", placeholder: "Optional" },
+                        { key: "irPhase", label: "IR Phase", type: "select",
+                          options: IR_PHASES.map((p) => `${p.ico} ${p.n}`) },
+                        { key: "priority", label: "Priority", type: "select",
+                          options: ["Critical", "High", "Medium", "Low"], defaultValue: "Medium" },
+                      ],
+                      "This creates a TaskItem in the global Tasks board, tagged to this incident and workstream."
+                    );
+                    if (!r) return;
+                    const phaseMatch = IR_PHASES.find((p) => `${p.ico} ${p.n}` === r.irPhase);
+                    addTask({
+                      id: Date.now(),
+                      title: r.task.trim(),
+                      priority: (r.priority || "Medium") as "Critical" | "High" | "Medium" | "Low",
+                      status: "Backlog",
+                      assignee: r.assignee?.trim() || "",
+                      source: `Workstream: ${ws.r}`,
+                      updates: [],
+                      created: new Date().toLocaleString(),
+                      incidentId: inc.id,
+                      workstream: ws.k,
+                      irPhase: phaseMatch?.id,
+                    });
+                    addTL(`WS ${ws.r}: + ${r.task.trim()}`);
+                  }}>+ Task</Button>
                 </div>
-                {d.tasks.map((t, i) => (
-                  <Checkbox key={i} label={t.text} checked={t.done} onChange={(v) => {
-                    setInc((p) => ({ ...p, workstreams: { ...p.workstreams, [ws.k]: { ...d, tasks: d.tasks.map((x, idx) => idx === i ? { ...x, done: v } : x) } } }));
-                    if (v) addTL(`WS ${ws.r}: ${t.text} ✓`);
-                  }} />
-                ))}
+                {wsTasks.length === 0 && (
+                  <div style={{ color: colors.textDim, fontSize: 10, fontStyle: "italic", padding: "4px 0" }}>
+                    No tasks yet. Add one above, or tag a task in the Tasks module with workstream &quot;{ws.k}&quot;.
+                  </div>
+                )}
+                {wsTasks.map((t) => {
+                  const phaseLabel = t.irPhase ? IR_PHASES.find((p) => p.id === t.irPhase)?.n : null;
+                  return (
+                    <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                      <Checkbox
+                        label=""
+                        checked={t.status === "Done"}
+                        onChange={(v) => {
+                          updateTask(t.id, { status: v ? "Done" : "Backlog" });
+                          if (v) addTL(`WS ${ws.r}: ${t.title} ✓`);
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <span style={{
+                          color: t.status === "Done" ? colors.textDim : colors.text,
+                          fontSize: 10,
+                          textDecoration: t.status === "Done" ? "line-through" : "none",
+                        }}>{t.title}</span>
+                        {t.assignee && <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 6 }}>({t.assignee})</span>}
+                        {phaseLabel && <Badge color={colors.blue}>{phaseLabel}</Badge>}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={async () => {
+                        const ok = await modal.showConfirm("Remove task?", `"${t.title}" will be removed from the workstream and the global Tasks board.`, "danger");
+                        if (ok) deleteTask(t.id);
+                      }}>×</Button>
+                    </div>
+                  );
+                })}
               </Card>
             );
           })}
@@ -940,26 +1066,66 @@ export function Commander() {
         <Button variant="outline" onClick={() => { save(); modal.showAlert("Saved", "Incident data has been saved."); }}>Save</Button>
         <Button variant="secondary" onClick={() => setEditing(true)}>Edit Details</Button>
         <Button variant="danger" onClick={() => {
-          modal.showConfirm("Close Incident", "Are you sure you want to close this incident? A final summary will be generated.", "danger").then((confirmed) => { if (!confirmed) return;
+          // Dispositions are captured at close so post-mortem analytics can
+          // distinguish a real incident from a false-positive or a downgrade
+          // to a Security Event (an observable signal that didn't meet the
+          // incident threshold).
+          const DISPOSITION_LABELS: Record<string, "Resolved" | "FalsePositive" | "DeEscalated" | "Duplicate"> = {
+            "Resolved — confirmed incident, response complete": "Resolved",
+            "False Positive — alert was not a real incident": "FalsePositive",
+            "De-escalated to Security Event — investigated, no incident threshold met": "DeEscalated",
+            "Duplicate — same root cause as another incident": "Duplicate",
+          };
+          const PHASE_LABELS: Record<string, string> = Object.fromEntries(IR_PHASES.map((p) => [`${p.ico} ${p.n}`, p.id]));
+          // Best-guess current phase: highest-id phase with any task progress.
+          // Falls back to legacy phaseStatus (manual slider in older incidents).
+          const phaseHasProgress = (phaseId: string) => {
+            const phTasks = tasks.filter((t) => t.incidentId === inc.id && t.irPhase === phaseId);
+            const phaseDone = phTasks.filter((t) => t.status === "Done").length;
+            return phTasks.length > 0 && phaseDone > 0;
+          };
+          const currentPhaseId =
+            IR_PHASES.slice().reverse().find((p) => phaseHasProgress(p.id))?.id ||
+            IR_PHASES.slice().reverse().find((p) => (inc.phaseStatus?.[p.id] ?? 0) > 0)?.id ||
+            "ident";
+          const currentPhase = IR_PHASES.find((p) => p.id === currentPhaseId)!;
+          modal.showPrompt(
+            "Close Incident",
+            [
+              { key: "disposition", label: "Disposition", type: "select", required: true,
+                options: Object.keys(DISPOSITION_LABELS), defaultValue: "Resolved — confirmed incident, response complete" },
+              { key: "phase", label: "Phase at Close", type: "select", required: true,
+                options: Object.keys(PHASE_LABELS), defaultValue: `${currentPhase.ico} ${currentPhase.n}` },
+              { key: "rationale", label: "Rationale / Closure Notes", type: "textarea",
+                placeholder: "e.g. AV signature on benign installer; user-submitted phish was a marketing email.", required: true },
+            ],
+            "Security Event = an observed occurrence (alert, anomaly, detection) that warrants investigation. It becomes an Incident only when investigation confirms unauthorized access, data exposure, or material disruption."
+          ).then((r) => {
+            if (!r) return;
+            const disposition = DISPOSITION_LABELS[r.disposition];
+            const closedPhase = PHASE_LABELS[r.phase];
+            const closureRationale = r.rationale.trim();
             const closedDate = new Date().toLocaleDateString();
+            const closedAt = new Date().toLocaleString();
             // Send close notification
             const closeNotif = buildNotification("incident.closed", {
-              what: `Incident "${inc.title}" has been closed`,
+              what: `Incident "${inc.title}" has been closed (${disposition})`,
               who: "Incident Commander",
-              when: new Date().toLocaleString(),
+              when: closedAt,
               where: "Commander Module",
-              why: `Incident response complete. Total cost: $${totalCost.toLocaleString()}. Team: ${inc.members.length} responders.`,
+              why: `Disposition: ${disposition}. Closed in ${IR_PHASES.find((p) => p.id === closedPhase)?.n || closedPhase}. ${closureRationale} Total cost: $${totalCost.toLocaleString()}. Team: ${inc.members.length} responders.`,
               incidentTitle: inc.title,
               privileged: inc.attorneyPrivilege,
             }, stakeholders);
             copyNotification(closeNotif);
-            addNotification({ id: Date.now(), event: "incident.closed", recipients: closeNotif.recipients, subject: closeNotif.subject, body: closeNotif.body, timestamp: new Date().toLocaleString(), privileged: closeNotif.privileged, module: "Commander" });
+            addNotification({ id: Date.now(), event: "incident.closed", recipients: closeNotif.recipients, subject: closeNotif.subject, body: closeNotif.body, timestamp: closedAt, privileged: closeNotif.privileged, module: "Commander" });
             addCase({ title: inc.title, date: closedDate, status: "Closed", cost: totalCost, members: inc.members.length });
-            // Update incident log entry to Closed
+            // Persist disposition on the active incident before we clear it (in case anything else reads it).
+            setInc((p) => ({ ...p, status: "Closed", disposition, closedPhase, closureRationale, endTime: closedAt }));
+            // Update incident log entry to Closed with disposition metadata
             const logEntry = incidentLog.find((e) => e.title === inc.title && e.status === "Active");
             if (logEntry) {
-              updateIncidentLogEntry(logEntry.incidentId, { status: "Closed", closedAt: new Date().toLocaleString() });
-              // Close the master ticket
+              updateIncidentLogEntry(logEntry.incidentId, { status: "Closed", closedAt, disposition, closedPhase, closureRationale });
               updateTicket(logEntry.masterTicketId, { status: "Closed" });
             }
             setActiveIncident(null);

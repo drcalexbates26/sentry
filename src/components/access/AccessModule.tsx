@@ -42,7 +42,12 @@ export function AccessModule() {
     setTeam(await listTeamMembers());
   }, []);
   const refreshActivity = useCallback(async () => {
-    setActivity(await listAccessActivity({ limit: 200 }));
+    // Hide tenant impersonation events from customer audit views — those are
+    // internal SaaS operations and shouldn't show up in the tenant feed.
+    // Legacy events may still exist in the database; this drops them at the
+    // render layer in case any tenant carried over old entries.
+    const events = await listAccessActivity({ limit: 200 });
+    setActivity(events.filter((e) => e.action !== "tenant_impersonation_started" && e.action !== "tenant_impersonation_ended"));
   }, []);
 
   useEffect(() => {
@@ -537,9 +542,11 @@ function ActivityLogTab({
             }}
           >
             <option value="all">All events</option>
-            {Object.values(ACCESS_ACTIONS).map((a) => (
-              <option key={a.id} value={a.id}>{a.label}</option>
-            ))}
+            {Object.values(ACCESS_ACTIONS)
+              .filter((a) => a.id !== "tenant_impersonation_started" && a.id !== "tenant_impersonation_ended")
+              .map((a) => (
+                <option key={a.id} value={a.id}>{a.label}</option>
+              ))}
           </select>
           <Button variant="outline" size="sm" onClick={() => void onRefresh()}>Refresh</Button>
         </div>

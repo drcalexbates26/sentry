@@ -5,7 +5,13 @@ import { useColors } from "@/lib/theme";
 import { useStore } from "@/store";
 import { Badge, Button, Card, Input, Select, SectionHeader, ScoreGauge } from "@/components/ui";
 import { GLOBAL_FEEDS } from "@/lib/threat-intel/feed-config";
-import { generateExecutiveSummary, generateRecommendations } from "@/lib/threat-intel/summary-generator";
+import {
+  generateExecutiveSummary,
+  generateRecommendations,
+  generateStructuredRecommendations,
+  generateDailyBriefing,
+  type StructuredRecommendation,
+} from "@/lib/threat-intel/summary-generator";
 import { refreshThreatIntelAction } from "@/app/app/_actions";
 import type { ThreatIntelItem } from "@/types/threat-intel";
 import type { ThreatIntelStoreItem } from "@/store";
@@ -13,6 +19,80 @@ import type { ThreatIntelStoreItem } from "@/store";
 function useSevColors() {
   const c = useColors();
   return { Critical: c.red, High: c.orange, Medium: c.yellow, Low: c.green, Informational: c.textDim } as Record<string, string>;
+}
+
+/**
+ * Render the structured remediation playbook with priority bins + why/verify.
+ * Shared across the preview (pre-applicability) and applied (post-ticket-creation)
+ * variants so both views surface the same playbook content.
+ */
+function StructuredRecsPanel({
+  recs,
+  colors,
+  variant,
+}: {
+  recs: StructuredRecommendation[];
+  colors: ReturnType<typeof useColors>;
+  variant: "preview" | "applied";
+}) {
+  const priColor: Record<StructuredRecommendation["priority"], string> = {
+    Now: colors.red,
+    "24h": colors.orange,
+    "This Week": colors.yellow,
+    Ongoing: colors.blue,
+  };
+  const groups: StructuredRecommendation["priority"][] = ["Now", "24h", "This Week", "Ongoing"];
+  return (
+    <div>
+      {groups.map((g) => {
+        const bucket = recs.filter((r) => r.priority === g);
+        if (bucket.length === 0) return null;
+        return (
+          <div key={g} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <Badge color={priColor[g]}>
+                {g === "Now" ? "DO NOW" : g === "24h" ? "NEXT 24 HOURS" : g === "This Week" ? "THIS WEEK" : "ONGOING"}
+              </Badge>
+              <span style={{ color: colors.textDim, fontSize: 9 }}>{bucket.length} action{bucket.length === 1 ? "" : "s"}</span>
+            </div>
+            {bucket.map((r, i) => (
+              <div key={`${g}-${i}`} style={{ background: colors.obsidianM, borderRadius: 6, padding: 10, marginBottom: 6, borderLeft: `3px solid ${priColor[g]}` }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: priColor[g] + "22", color: priColor[g], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: colors.text, fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{r.text}</div>
+                    <div style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.5, marginBottom: 4 }}>
+                      <strong style={{ color: colors.textDim }}>Why:</strong> {r.why}
+                    </div>
+                    <div style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.5 }}>
+                      <strong style={{ color: colors.tealLight }}>Verify:</strong> {r.verify}
+                    </div>
+                  </div>
+                  {variant === "applied" && <Badge color={colors.blue}>TKT</Badge>}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Open the daily briefing text in a new window for print / save / share. */
+function openDailyBriefingWindow(briefing: string) {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  const html = `<!DOCTYPE html><html><head><title>Sentry — Daily Threat Briefing</title>
+<style>
+  @page { size: letter; margin: 0.75in; }
+  body { font-family: "Courier New", ui-monospace, monospace; background: #FFFFFF; color: #1A1A1A; padding: 28px; max-width: 8.5in; margin: 0 auto; line-height: 1.55; font-size: 11pt; white-space: pre-wrap; }
+  .toolbar { position: fixed; top: 14px; right: 14px; background: #00B4A6; color: white; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-family: -apple-system, sans-serif; font-weight: 600; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  @media print { .toolbar { display: none; } }
+</style></head><body><button class="toolbar" onclick="window.print()">Print / Save as PDF</button>${briefing.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 function timeAgo(dateStr: string): string {
@@ -213,6 +293,7 @@ export function ThreatIntelModule() {
 
     const summary = generateExecutiveSummary(item);
     const recs = generateRecommendations(item);
+    const structuredRecs = generateStructuredRecommendations(item);
     const related = threatIntelItems
       .filter((i) => i.id !== item.id && (i.tags.some((t) => item.tags.includes(t)) || item.affectedVendors.some((v) => i.affectedVendors.includes(v))))
       .slice(0, 5);
@@ -342,15 +423,9 @@ export function ThreatIntelModule() {
                 );
               })()}
 
-              {/* Recommendations with status */}
-              <div style={{ marginTop: 12, fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Recommended Actions ({recs.length} tickets created)</div>
-              {recs.map((r, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}`, alignItems: "center" }}>
-                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: i < 2 ? colors.red + "22" : colors.orange + "22", color: i < 2 ? colors.red : colors.orange, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
-                  <span style={{ color: colors.text, fontSize: 10, flex: 1 }}>{r}</span>
-                  <Badge color={colors.blue}>TKT</Badge>
-                </div>
-              ))}
+              {/* Structured recommendation playbook — priority + why + verify */}
+              <div style={{ marginTop: 12, fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Remediation Playbook ({structuredRecs.length} steps · {recs.length} tickets created)</div>
+              <StructuredRecsPanel recs={structuredRecs} colors={colors} variant="applied" />
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -360,6 +435,17 @@ export function ThreatIntelModule() {
             </div>
           )}
         </Card>
+
+        {/* Pre-decision Remediation Playbook — visible even before applicability */}
+        {(!item.applicability || item.applicability === "pending") && (
+          <Card style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Remediation Playbook</div>
+            <div style={{ color: colors.textMuted, fontSize: 10, fontStyle: "italic", marginBottom: 10, lineHeight: 1.5 }}>
+              Concrete actions binned by urgency. Mark this threat <strong>Applicable</strong> above to spin these into tickets in the global Tasks board.
+            </div>
+            <StructuredRecsPanel recs={structuredRecs} colors={colors} variant="preview" />
+          </Card>
+        )}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -427,6 +513,83 @@ export function ThreatIntelModule() {
           </Button>
         </div>
       </div>
+
+      {/* ── DAILY BRIEFING ─────────────────────────────────────────────
+          Today's posture in one card. Designed to be the daily-stop landing
+          surface — what changed, what to prioritize, what to communicate. */}
+      {items.length > 0 && (() => {
+        // Store items use a looser `feedCategory: string` shape; cast to the
+        // narrowed ThreatIntelItem union at the boundary (values are always
+        // "global" or "industry" in practice).
+        const itemsForGen = items as unknown as ThreatIntelItem[];
+        const briefing = generateDailyBriefing({ items: itemsForGen, orgName: org.name, orgIndustry: org.industry });
+        const now = Date.now();
+        const last24h = items.filter((i) => now - new Date(i.publishedAt).getTime() <= 86400000);
+        const newCritical = last24h.filter((i) => i.severityRank === "Critical" || i.isZeroDay);
+        const top3 = items.slice().sort((a, b) => b.riskScore - a.riskScore).slice(0, 3);
+        const posture = newCritical.length === 0 && exploitedItems.length === 0
+          ? { tone: colors.green, label: "STEADY", line: `Stable posture today. ${last24h.length} new item${last24h.length === 1 ? "" : "s"} in 24h, no new critical or actively-exploited threats. Use this window to clear remediation tasks and run a tabletop.` }
+          : newCritical.length > 0 && exploitedItems.length > 0
+          ? { tone: colors.red, label: "ELEVATED", line: `Elevated posture. ${newCritical.length} new critical / zero-day item${newCritical.length === 1 ? "" : "s"} arrived in 24h and ${exploitedItems.length} item${exploitedItems.length === 1 ? " is" : "s are"} actively exploited. Patch decisions made before noon will pay dividends.` }
+          : newCritical.length > 0
+          ? { tone: colors.orange, label: "SHARPENED", line: `Sharpened posture. ${newCritical.length} new critical / zero-day item${newCritical.length === 1 ? "" : "s"} arrived in 24h. Verify your inventory against the affected products before standing up new mitigations.` }
+          : { tone: colors.orange, label: "ACTIVE", line: `Active posture. ${exploitedItems.length} item${exploitedItems.length === 1 ? " is" : "s are"} confirmed under active exploitation. If any are in your environment, treat patching as an emergency change.` };
+        return (
+          <Card style={{ marginBottom: 16, borderLeft: `4px solid ${posture.tone}`, background: posture.tone + "08" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 22 }}>📰</span>
+                  <h3 style={{ color: colors.white, margin: 0, fontSize: 16, fontWeight: 700 }}>Daily Threat Briefing</h3>
+                  <Badge color={posture.tone}>{posture.label}</Badge>
+                </div>
+                <div style={{ color: colors.textMuted, fontSize: 10, letterSpacing: "0.06em" }}>
+                  {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} · {last24h.length} new in 24h · {newCritical.length} new critical · {exploitedItems.length} exploited
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => openDailyBriefingWindow(briefing)}>View Full Briefing</Button>
+            </div>
+
+            <p style={{ color: colors.text, fontSize: 12, margin: "0 0 12px", lineHeight: 1.55 }}>{posture.line}</p>
+
+            {top3.length > 0 && (
+              <div>
+                <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Today&apos;s Top Three Priorities</div>
+                {top3.map((item, idx) => {
+                  const topRecs = generateStructuredRecommendations(item as unknown as ThreatIntelItem).filter((r) => r.priority === "Now" || r.priority === "24h").slice(0, 2);
+                  return (
+                    <div key={item.id} onClick={() => setSelectedId(item.id)} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: `1px solid ${colors.panelBorder}`, cursor: "pointer" }}>
+                      <div style={{ width: 26, height: 26, borderRadius: "50%", background: SEV_COLORS[item.severityRank] + "22", color: SEV_COLORS[item.severityRank], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: colors.white, fontSize: 11, fontWeight: 600 }}>
+                          {item.cveId && <span style={{ color: SEV_COLORS[item.severityRank], marginRight: 5, fontFamily: "var(--font-mono)" }}>{item.cveId}</span>}
+                          {item.title.substring(0, 90)}{item.title.length > 90 ? "…" : ""}
+                        </div>
+                        <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 3 }}>
+                          <Badge color={SEV_COLORS[item.severityRank]}>{item.severityRank} · {item.riskScore}</Badge>
+                          {item.isZeroDay && <Badge color={colors.red}>0-day</Badge>}
+                          {item.isActivelyExploited && <Badge color={colors.red}>exploited</Badge>}
+                          <Badge color={colors.textDim}>{item.feedSource}</Badge>
+                        </div>
+                        {topRecs.length > 0 && (
+                          <div style={{ marginTop: 5 }}>
+                            {topRecs.map((r, ri) => (
+                              <div key={ri} style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.5, display: "flex", gap: 6 }}>
+                                <span style={{ color: r.priority === "Now" ? colors.red : colors.orange, fontWeight: 700, flexShrink: 0 }}>→ [{r.priority}]</span>
+                                <span>{r.text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* Summary Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>

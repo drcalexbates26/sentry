@@ -9,6 +9,18 @@ import type { TaskStatus } from "@/types/task";
 
 const COLS: TaskStatus[] = ["Backlog", "In Progress", "In Review", "Done"];
 const IR_PHASE_OPTIONS = [{ value: "", label: "None" }, ...IR_PHASES.map((p) => ({ value: p.id, label: `${p.ico} ${p.n}` }))];
+// Keep in sync with the workstream list in Commander's Workstreams tab.
+const WORKSTREAM_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "Security", label: "Security Engineering" },
+  { value: "Legal", label: "Legal Counsel" },
+  { value: "Executive", label: "Executive Leadership" },
+  { value: "Insurance", label: "Cyber Insurance" },
+  { value: "Forensics", label: "Forensics" },
+  { value: "HR", label: "Human Resources" },
+  { value: "PR", label: "Public Relations" },
+  { value: "Privacy", label: "Privacy Officer" },
+];
 
 export function TasksModule() {
   const { tasks, addTask, updateTask, deleteTask, activeIncident, addTaskWithTicket } = useStore();
@@ -16,7 +28,7 @@ export function TasksModule() {
   const priColors: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green };
   const modal = useModal();
   const [showNew, setShowNew] = useState(false);
-  const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "" });
+  const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "", workstream: "" });
   const [editId, setEditId] = useState<number | null>(null);
 
   /** IDs of tasks currently checked for bulk operations. */
@@ -107,6 +119,7 @@ export function TasksModule() {
             <Input label="Title" value={nf.title} onChange={(v) => setNf((p) => ({ ...p, title: v }))} />
             <Select label="Priority" value={nf.priority} onChange={(v) => setNf((p) => ({ ...p, priority: v }))} options={["Low", "Medium", "High", "Critical"]} />
             <Select label="IR Phase" value={nf.irPhase} onChange={(v) => setNf((p) => ({ ...p, irPhase: v }))} options={IR_PHASE_OPTIONS} />
+            <Select label="Workstream" value={nf.workstream} onChange={(v) => setNf((p) => ({ ...p, workstream: v }))} options={WORKSTREAM_OPTIONS} />
             <Input label="Assignee" value={nf.assignee} onChange={(v) => setNf((p) => ({ ...p, assignee: v }))} />
           </div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -122,7 +135,10 @@ export function TasksModule() {
                 created: new Date().toLocaleDateString(),
                 source: "Manual",
                 irPhase: nf.irPhase || undefined,
-                incidentId: activeIncident ? `INC-active` : undefined,
+                // Use the active incident's real id, not a placeholder, so
+                // Commander filters (IR Phase progression, Workstreams tab) match.
+                incidentId: activeIncident?.id,
+                workstream: nf.workstream || undefined,
               };
               if (activeIncident) {
                 addTaskWithTicket(task, activeIncident.title);
@@ -130,7 +146,7 @@ export function TasksModule() {
                 addTask(task);
               }
               setShowNew(false);
-              setNf({ title: "", priority: "Medium", assignee: "", irPhase: "" });
+              setNf({ title: "", priority: "Medium", assignee: "", irPhase: "", workstream: "" });
             }}>Create{activeIncident ? " + Ticket" : ""}</Button>
             <Button variant="secondary" onClick={() => setShowNew(false)}>Cancel</Button>
           </div>
@@ -210,6 +226,7 @@ export function TasksModule() {
                   <div style={{ display: "flex", gap: 3, marginBottom: 4, flexWrap: "wrap" }}>
                     <Badge color={priColors[task.priority]}>{task.priority}</Badge>
                     {task.irPhase && <Badge color={colors.cyan}>{IR_PHASES.find((p) => p.id === task.irPhase)?.n || task.irPhase}</Badge>}
+                    {task.workstream && <Badge color={colors.teal}>WS · {task.workstream}</Badge>}
                     {task.assignee && <Badge color={colors.blue}>{task.assignee}</Badge>}
                     {task.ticketId && <Badge color={colors.textDim}>TKT-{task.ticketId}</Badge>}
                   </div>

@@ -32,6 +32,25 @@ export interface IncidentLogEntry {
   /** When the incident was closed — feeds MTTR. */
   closedAt?: string;
   status: "Active" | "Closed";
+  /**
+   * Final disposition captured at close. Drives the post-mortem analytics
+   * (false-positive rate, de-escalation rate, average phase-at-close).
+   *
+   * - "Resolved"      — confirmed incident, fully handled through Lessons Learned.
+   * - "FalsePositive" — alert / signal was not a real incident. Closed in Identification.
+   * - "DeEscalated"   — downgraded to a Security Event: an observable detection that
+   *                     warrants tracking but does not meet the threshold for a
+   *                     formal incident (no confirmed unauthorized access, data
+   *                     exposure, or material disruption).
+   * - "Duplicate"     — same root cause as another open / closed incident.
+   */
+  disposition?: "Resolved" | "FalsePositive" | "DeEscalated" | "Duplicate";
+  /** IR-phase id from src/data/ir-phases.ts at the moment the incident was closed. */
+  closedPhase?: string;
+  /** Free-text rationale captured alongside the disposition (e.g. "AV signature on benign installer"). */
+  closureRationale?: string;
+  /** Short summary describing the incident — editable from the Incident Log. */
+  summary?: string;
 }
 
 export type UserRole = "viewer" | "analyst" | "manager" | "admin";
@@ -72,6 +91,29 @@ interface AppState {
     checked: Record<string, boolean>;
     notes: Record<string, string>;
     contacts: { core: IRContact[]; extended: IRContact[]; external: IRContact[] };
+    /**
+     * Per-phase user overrides for the lifecycle checklist. When set for a
+     * phase id, this replaces the default `steps` from IR_PHASES — letting
+     * orgs customize their playbook to their environment without forking the
+     * data file. Absence = use the static defaults.
+     */
+    phaseSteps?: Record<string, string[]>;
+    /**
+     * Per-severity user overrides. Keyed by severity name ("Low", "Medium",
+     * "High", "Critical"). Each entry may override description and/or action
+     * guidance. Absence = use the static SEV_LEVELS defaults.
+     */
+    severityDefs?: Record<string, { desc?: string; act?: string }>;
+    /**
+     * Editable Communications SLA (formerly Battle Rhythm / EOC). Two groups
+     * — the intensive first 72 hours and the steady-state cadence after that
+     * — each carrying ordered entries that the IC can rewrite per program.
+     */
+    commsSLA?: {
+      first72: { time: string; label: string }[];
+      after72: { time: string; label: string }[];
+      notes?: string;
+    };
   };
   updateIRData: (fn: (prev: AppState["irData"]) => AppState["irData"]) => void;
 
@@ -83,6 +125,8 @@ interface AppState {
   incidentLog: IncidentLogEntry[];
   addIncidentLogEntry: (entry: IncidentLogEntry) => void;
   updateIncidentLogEntry: (incidentId: string, updates: Partial<IncidentLogEntry>) => void;
+  /** Remove an entry from the incident log. Surfaced from the Incident Log UI. */
+  deleteIncidentLogEntry: (incidentId: string) => void;
 
   // Tickets
   tickets: Ticket[];
@@ -391,6 +435,8 @@ export const useStore = create<AppState>((set) => ({
   addIncidentLogEntry: (entry) => set((s) => ({ incidentLog: [entry, ...s.incidentLog] })),
   updateIncidentLogEntry: (incidentId, updates) =>
     set((s) => ({ incidentLog: s.incidentLog.map((e) => (e.incidentId === incidentId ? { ...e, ...updates } : e)) })),
+  deleteIncidentLogEntry: (incidentId) =>
+    set((s) => ({ incidentLog: s.incidentLog.filter((e) => e.incidentId !== incidentId) })),
 
   // Tickets with hierarchy
   tickets: [],

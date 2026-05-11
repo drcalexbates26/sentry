@@ -23,6 +23,15 @@ export interface Incident {
   summaries: Summary[];
   notifications: IncidentNotification[];
   members: IncidentMember[];
+  /**
+   * Final disposition captured at close. See IncidentLogEntry.disposition for
+   * the canonical definitions of each value.
+   */
+  disposition?: "Resolved" | "FalsePositive" | "DeEscalated" | "Duplicate";
+  /** IR-phase id (from src/data/ir-phases.ts) at the moment the incident was closed. */
+  closedPhase?: string;
+  /** Free-text rationale captured alongside the disposition. */
+  closureRationale?: string;
 }
 
 export interface Finding {

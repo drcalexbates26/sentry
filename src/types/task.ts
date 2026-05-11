@@ -13,6 +13,12 @@ export interface TaskItem {
   irPhase?: string;
   incidentId?: string;
   ticketId?: number;
+  /**
+   * Workstream key (e.g. "Security", "Legal", "Executive") when this task
+   * belongs to an incident workstream. Lets the Commander's Workstreams tab
+   * and the global Tasks board stay in sync — same TaskItem, two views.
+   */
+  workstream?: string;
 }
 
 export interface TaskUpdate {
