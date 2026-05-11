@@ -683,6 +683,9 @@ export async function getTenantContext(): Promise<{
   isDemoTenant: boolean;
   userRole: string;
   userEmail: string;
+  userFullName: string | null;
+  userAppRole: string;
+  userCompany: string | null;
   isImpersonating: boolean;
   homeTenantId: string;
   homeTenantName: string;
@@ -721,6 +724,9 @@ export async function getTenantContext(): Promise<{
     isDemoTenant: activeTenant?.isDemoTenant ?? false,
     userRole: session.user!.role,
     userEmail: session.email,
+    userFullName: session.user!.fullName ?? null,
+    userAppRole: session.user!.appRole,
+    userCompany: session.user!.company ?? null,
     isImpersonating: session.isImpersonating,
     homeTenantId,
     homeTenantName: homeTenant?.name ?? activeTenant?.name ?? "—",

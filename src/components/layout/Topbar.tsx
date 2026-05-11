@@ -10,10 +10,29 @@ interface TenantContext {
   isDemoTenant: boolean;
   userRole: string;
   userEmail: string;
+  userFullName: string | null;
+  userAppRole: string;
+  userCompany: string | null;
   isImpersonating: boolean;
   homeTenantId: string;
   homeTenantName: string;
   availableTenants: { id: string; name: string; slug: string; isDemoTenant: boolean }[];
+}
+
+function initialsOf(name: string | null, email: string): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+  }
+  return (email[0] ?? "?").toUpperCase();
+}
+
+function roleLabel(appRole: string): string {
+  if (appRole === "admin") return "Administrator";
+  if (appRole === "manager") return "Manager";
+  if (appRole === "analyst") return "Analyst";
+  if (appRole === "viewer") return "Viewer";
+  return appRole;
 }
 
 export function Topbar() {
@@ -112,7 +131,10 @@ export function Topbar() {
         )}
       </div>
 
-      {/* Right side: tenant switcher */}
+      {/* Right side: user menu + tenant switcher */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <UserMenu ctx={ctx} colors={colors} />
+
       <div style={{ position: "relative" }} ref={dropdownRef}>
         <button
           onClick={() => isSuperAdmin && setOpen((v) => !v)}
@@ -154,6 +176,7 @@ export function Topbar() {
           )}
         </button>
 
+        {/* user-menu + tenant-switcher wrapper closed below */}
         {open && isSuperAdmin && (
           <div
             style={{
@@ -268,8 +291,169 @@ export function Topbar() {
           </div>
         )}
       </div>
+      </div>
     </div>
   );
+}
+
+/**
+ * Avatar pill on the Topbar that exposes the user's identity and a clear
+ * Sign Out action. Built with a POST form because `/auth/signout` is a POST
+ * route — using a button-inside-form avoids needing a fetch wrapper.
+ */
+function UserMenu({ ctx, colors }: { ctx: TenantContext; colors: ReturnType<typeof useColors> }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const displayName = ctx.userFullName?.trim() || ctx.userEmail;
+
+  return (
+    <div style={{ position: "relative" }} ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title={`Signed in as ${displayName}`}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 10px 6px 6px",
+          borderRadius: 999,
+          background: colors.panel,
+          border: `1px solid ${colors.panelBorder}`,
+          color: colors.text,
+          fontSize: 12, fontWeight: 600,
+          fontFamily: "Figtree, sans-serif",
+          cursor: "pointer",
+        }}
+      >
+        <span style={{
+          width: 26, height: 26, borderRadius: "50%",
+          background: `linear-gradient(135deg, ${colors.teal}, ${colors.tealDark})`,
+          color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", flexShrink: 0,
+        }}>{initialsOf(ctx.userFullName, ctx.userEmail)}</span>
+        <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</span>
+        <span style={{ color: colors.textMuted, fontSize: 11 }}>{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            minWidth: 280, maxWidth: 360,
+            background: colors.panel, border: `1px solid ${colors.panelBorder}`,
+            borderRadius: 10, boxShadow: "0 16px 48px rgba(0,0,0,0.4)",
+            overflow: "hidden", zIndex: 50,
+          }}
+        >
+          {/* Identity block */}
+          <div style={{ padding: "14px 14px 10px", borderBottom: `1px solid ${colors.panelBorder}`, background: colors.bgL }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <span style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: `linear-gradient(135deg, ${colors.teal}, ${colors.tealDark})`,
+                color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 800, flexShrink: 0,
+              }}>{initialsOf(ctx.userFullName, ctx.userEmail)}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ color: colors.text, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {displayName}
+                </div>
+                <div style={{ color: colors.textMuted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {ctx.userEmail}
+                </div>
+                <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <span style={{
+                    padding: "2px 7px", borderRadius: 4,
+                    background: colors.teal + "1F", color: colors.teal,
+                    fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                  }}>{roleLabel(ctx.userAppRole)}</span>
+                  {ctx.userCompany && (
+                    <span style={{
+                      padding: "2px 7px", borderRadius: 4,
+                      background: colors.panelBorder, color: colors.textMuted,
+                      fontSize: 9, fontWeight: 600,
+                    }}>{ctx.userCompany}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu items */}
+          <div style={{ padding: 4 }}>
+            <a
+              href="/app"
+              onClick={() => setOpen(false)}
+              style={menuItemStyle(colors)}
+            >
+              <span>⚙️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Account settings</div>
+                <div style={{ fontSize: 10, color: colors.textDim }}>Profile, company, password</div>
+              </div>
+            </a>
+            <a
+              href="https://sentry.darkrocklabs.com/security"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setOpen(false)}
+              style={menuItemStyle(colors)}
+            >
+              <span>🛡️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Security & Trust</div>
+                <div style={{ fontSize: 10, color: colors.textDim }}>Sub-processors, vuln disclosure</div>
+              </div>
+            </a>
+          </div>
+
+          {/* Sign Out — POST form so it works without JS too */}
+          <form action="/auth/signout" method="post" style={{ margin: 0, padding: 4, borderTop: `1px solid ${colors.panelBorder}` }}>
+            <button
+              type="submit"
+              style={{
+                ...menuItemStyle(colors),
+                color: colors.red,
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                background: "transparent",
+                width: "100%",
+                textAlign: "left",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.red + "1A"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <span>→</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12 }}>Sign out</div>
+                <div style={{ fontSize: 10, color: colors.textDim }}>End your session and return to /login</div>
+              </div>
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function menuItemStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
+  return {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: "9px 12px", borderRadius: 6,
+    color: colors.text, textDecoration: "none",
+    fontFamily: "Figtree, sans-serif",
+    cursor: "pointer",
+  };
 }
 
 function rowBtn(colors: ReturnType<typeof useColors>, active: boolean): React.CSSProperties {
