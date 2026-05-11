@@ -12,7 +12,7 @@ import {
   listPolicies, listPolicyApprovers,
   generatePolicyDraft, savePolicyDraft,
   submitPolicyForReview, signOffPolicy, publishPolicy,
-  startNewPolicyVersion, discardPolicyDraft,
+  startNewPolicyVersion, discardPolicyDraft, recallPolicyForRevision,
   acknowledgePolicy, listPolicyAcknowledgments,
   type PolicyDTO, type PolicyVersionDTO, type ApproverCandidate, type PolicyAckSummary,
 } from "@/app/app/_actions";
@@ -193,9 +193,23 @@ export function PoliciesModule() {
                   onSubmit={() => submitForReview(tpl.id)}
                   onSignOff={() => handle(`sign:${tpl.id}`, { title: "Approval recorded", body: "You may now publish, or another admin can." }, () => signOffPolicy(tpl.id))}
                   onPublish={() => handle(`pub:${tpl.id}`, { title: "Policy published", body: "The version is now live across the tenant." }, () => publishPolicy(tpl.id))}
+                  onRecall={async () => {
+                    const ok = await modal.showConfirm(
+                      "Recall this policy from review?",
+                      "The version returns to Draft state and becomes editable again. The submitter and approver assignments are cleared — when you resubmit you'll pick an approver fresh.",
+                    );
+                    if (ok) handle(`recall:${tpl.id}`, { title: "Recalled to draft", body: "The policy is editable again and the named approver was unassigned." }, () => recallPolicyForRevision(tpl.id));
+                  }}
                   onDiscard={async () => {
-                    const ok = await modal.showConfirm("Discard this draft?", "This deletes the working draft. The published version (if any) remains live.", "danger");
-                    if (ok) handle(`disc:${tpl.id}`, { title: "Draft discarded", body: "The draft has been removed." }, () => discardPolicyDraft(tpl.id));
+                    const inReviewWarning = activeVersion.status === "in_review"
+                      ? "This version is currently in review. Discarding deletes it entirely — the named approver will no longer see it. "
+                      : "";
+                    const ok = await modal.showConfirm(
+                      "Discard this version?",
+                      `${inReviewWarning}The working draft is permanently removed. The published version (if any) remains live.`,
+                      "danger",
+                    );
+                    if (ok) handle(`disc:${tpl.id}`, { title: "Version discarded", body: "The draft has been removed." }, () => discardPolicyDraft(tpl.id));
                   }}
                   onStartNewVersion={() => handle(`new:${tpl.id}`, { title: "New version started", body: "A fresh draft has been forked from the published version." }, () => startNewPolicyVersion(tpl.id))}
                 />
@@ -364,48 +378,129 @@ export function PoliciesModule() {
         })}
       </div>
 
-      {/* Templates tab */}
+      {/* Templates tab — table view */}
       {tab === "templates" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12 }}>
-          {POLICY_TEMPLATES.map((t) => {
-            const policy = findByTemplate(t.id);
-            const live = policy?.publishedVersion;
-            const draft = policy?.draftVersion;
-            const review = policy?.inReviewVersion;
-            return (
-              <Card key={t.id} onClick={() => setSelectedTemplateId(t.id)} style={{ cursor: "pointer", borderColor: live ? colors.green + "33" : colors.panelBorder }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 26 }}>{t.i}</span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                    {live && <Badge color={colors.green}>Live · v{live.versionNumber}</Badge>}
-                    {review && <Badge color={colors.orange}>In Review · v{review.versionNumber}</Badge>}
-                    {draft && <Badge color={colors.teal}>Draft · v{draft.versionNumber}</Badge>}
-                    {!live && !review && !draft && <Badge color={colors.textDim}>Not generated</Badge>}
-                  </div>
-                </div>
-                <h4 style={{ color: colors.white, margin: "10px 0 4px", fontSize: 13 }}>{t.n}</h4>
-                <p style={{ color: colors.textMuted, fontSize: 10, margin: "0 0 10px", lineHeight: 1.5 }}>{t.d}</p>
-                {live && (
-                  <div style={{ color: colors.green, fontSize: 9, fontWeight: 600 }}>
-                    Went live {new Date(live.publishedAt!).toLocaleDateString()}
-                  </div>
-                )}
-                {!policy && (
-                  <Button size="sm" variant="outline" style={{ width: "100%", marginTop: 6 }} onClick={() => {
-                    handle(
-                      `gen:${t.id}`,
-                      { title: "Draft generated", body: "Open the policy to edit, sign off, and publish." },
-                      () => generatePolicyDraft(t.id),
-                    );
-                    setTimeout(() => setSelectedTemplateId(t.id), 100);
-                  }} disabled={busyId === `gen:${t.id}`}>
-                    {busyId === `gen:${t.id}` ? "Generating…" : "Generate"}
-                  </Button>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <colgroup>
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "16%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "10%" }} />
+              </colgroup>
+              <thead>
+                <tr style={{ background: colors.obsidianM, borderBottom: `1px solid ${colors.panelBorder}` }}>
+                  <th style={tableHeadStyle(colors)}>Policy</th>
+                  <th style={tableHeadStyle(colors)}>Description</th>
+                  <th style={tableHeadStyle(colors)}>Frameworks</th>
+                  <th style={tableHeadStyle(colors)}>Status</th>
+                  <th style={{ ...tableHeadStyle(colors), textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {POLICY_TEMPLATES.map((t) => {
+                  const policy = findByTemplate(t.id);
+                  const live = policy?.publishedVersion;
+                  const draft = policy?.draftVersion;
+                  const review = policy?.inReviewVersion;
+                  const generating = busyId === `gen:${t.id}`;
+
+                  // Status: pick the most-actionable badge.
+                  let statusBadge: React.ReactNode;
+                  let statusMeta: React.ReactNode = null;
+                  if (live) {
+                    statusBadge = <Badge color={colors.green}>Live · v{live.versionNumber}</Badge>;
+                    statusMeta = <div style={{ color: colors.textDim, fontSize: 9, marginTop: 3 }}>Went live {new Date(live.publishedAt!).toLocaleDateString()}</div>;
+                  } else if (review) {
+                    statusBadge = <Badge color={colors.orange}>In Review · v{review.versionNumber}</Badge>;
+                    statusMeta = review.approver?.name ? <div style={{ color: colors.textDim, fontSize: 9, marginTop: 3 }}>Awaiting {review.approver.name}</div> : null;
+                  } else if (draft) {
+                    statusBadge = <Badge color={colors.teal}>Draft · v{draft.versionNumber}</Badge>;
+                    statusMeta = <div style={{ color: colors.textDim, fontSize: 9, marginTop: 3 }}>Edited {new Date(draft.updatedAt).toLocaleDateString()}</div>;
+                  } else {
+                    statusBadge = <Badge color={colors.textDim}>Not generated</Badge>;
+                  }
+
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={() => setSelectedTemplateId(t.id)}
+                      style={{
+                        borderBottom: `1px solid ${colors.panelBorder}`,
+                        cursor: "pointer",
+                        transition: "background 0.12s",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.teal + "0A"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <td style={tableCellStyle()}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 22 }}>{t.i}</span>
+                          <span style={{ color: colors.white, fontSize: 12, fontWeight: 700 }}>{t.n}</span>
+                        </div>
+                      </td>
+                      <td style={tableCellStyle()}>
+                        <span style={{ color: colors.textMuted, fontSize: 10, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          {t.d}
+                        </span>
+                      </td>
+                      <td style={tableCellStyle()}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                          {t.frameworks.map((fw) => (
+                            <span key={fw} style={{
+                              display: "inline-block", padding: "2px 6px", borderRadius: 4,
+                              background: colors.obsidianM, color: colors.textMuted,
+                              fontSize: 9, fontWeight: 600,
+                            }}>{fw}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={tableCellStyle()}>
+                        <div>{statusBadge}</div>
+                        {statusMeta}
+                      </td>
+                      <td style={{ ...tableCellStyle(), textAlign: "right" }}>
+                        {/* Wrapper stops the row click from racing the row navigation —
+                            otherwise both fire and the user lands in the detail view
+                            before the server action returns. */}
+                        <div onClick={(e) => e.stopPropagation()} style={{ display: "inline-block" }}>
+                          {!policy ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={generating}
+                              onClick={() => {
+                                setBusyId(`gen:${t.id}`);
+                                startAction(async () => {
+                                  const res = await generatePolicyDraft(t.id);
+                                  setBusyId(null);
+                                  if (!res.ok) {
+                                    await modal.showAlert("Generate failed", res.error ?? "Unknown error");
+                                    return;
+                                  }
+                                  await refresh();
+                                  setSelectedTemplateId(t.id);
+                                });
+                              }}
+                            >
+                              {generating ? "Generating…" : "Generate"}
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => setSelectedTemplateId(t.id)}>
+                              Open →
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       {/* Drafts tab */}
@@ -562,6 +657,17 @@ function statusLabel(status: string): string {
   if (status === "draft") return "Draft";
   if (status === "archived") return "Archived";
   return status;
+}
+
+function tableHeadStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
+  return {
+    textAlign: "left", padding: "10px 14px",
+    color: colors.textDim, fontSize: 9, fontWeight: 700,
+    letterSpacing: "0.08em", textTransform: "uppercase",
+  };
+}
+function tableCellStyle(): React.CSSProperties {
+  return { padding: "12px 14px", verticalAlign: "middle" };
 }
 
 function StatTile({
@@ -877,7 +983,7 @@ function SignoffRowKV({ label, value, colors, good }: { label: string; value: st
 }
 
 function PolicyActions({
-  policy, version, busyId, approvers, onSubmit, onSignOff, onPublish, onDiscard, onStartNewVersion,
+  policy, version, busyId, approvers, onSubmit, onSignOff, onPublish, onDiscard, onRecall, onStartNewVersion,
 }: {
   policy: PolicyDTO;
   version: PolicyVersionDTO;
@@ -887,6 +993,7 @@ function PolicyActions({
   onSignOff: () => void;
   onPublish: () => void;
   onDiscard: () => void;
+  onRecall: () => void;
   onStartNewVersion: () => void;
 }) {
   const tplId = policy.templateId;
@@ -907,6 +1014,22 @@ function PolicyActions({
   if (version.status === "in_review") {
     return (
       <>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDiscard}
+          disabled={busyId === `disc:${tplId}`}
+        >
+          Discard
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRecall}
+          disabled={busyId === `recall:${tplId}`}
+        >
+          {busyId === `recall:${tplId}` ? "Recalling…" : "Recall to Draft"}
+        </Button>
         <Button
           size="sm"
           variant="outline"

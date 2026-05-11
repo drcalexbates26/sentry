@@ -1562,12 +1562,51 @@ export async function startNewPolicyVersion(templateId: string): Promise<{ ok: b
 export async function discardPolicyDraft(templateId: string): Promise<{ ok: boolean; error?: string }> {
   const session = await requireUser();
   const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  if (callerRole !== "tenant_admin" && callerRole !== "super_admin") {
+    return { ok: false, error: "Only tenant admins can discard policy drafts." };
+  }
   const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
-  if (!policy?.draftVersionId) return { ok: false, error: "No draft to discard." };
+  if (!policy?.draftVersionId) return { ok: false, error: "No active version to discard." };
   await prisma.$transaction([
     prisma.policyVersion.delete({ where: { id: policy.draftVersionId } }),
     prisma.policy.update({ where: { id: policy.id }, data: { draftVersionId: null } }),
   ]);
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+/**
+ * Recall an in-review version back to an editable draft. Clears the
+ * submitter signoff and the named approver so the next submission picks
+ * a fresh approver. Available to the original submitter and any tenant
+ * admin / super_admin — covers the case where the named approver has
+ * stalled or the submitter spotted a needed change after submitting.
+ */
+export async function recallPolicyForRevision(templateId: string): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireUser();
+  const tenantId = session.activeTenantId ?? session.user!.tenantId;
+  const callerRole = session.user!.role;
+  const policy = await prisma.policy.findUnique({ where: { id: policyId(tenantId, templateId) } });
+  if (!policy?.draftVersionId) return { ok: false, error: "No version in review." };
+  const v = await prisma.policyVersion.findUnique({ where: { id: policy.draftVersionId } });
+  if (!v) return { ok: false, error: "Version missing." };
+  if (v.status !== "in_review") return { ok: false, error: "Only versions currently in review can be recalled." };
+
+  const isAdmin = callerRole === "tenant_admin" || callerRole === "super_admin";
+  const isSubmitter = v.submitterUserId === session.authId;
+  if (!isAdmin && !isSubmitter) {
+    return { ok: false, error: "Only the original submitter or a tenant admin can recall a policy in review." };
+  }
+
+  await prisma.policyVersion.update({
+    where: { id: v.id },
+    data: {
+      status: "draft",
+      submitterUserId: null, submitterName: null, submittedAt: null,
+      approverUserId: null, approverName: null, approverSignedAt: null,
+    },
+  });
   revalidatePath("/app");
   return { ok: true };
 }
