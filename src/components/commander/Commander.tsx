@@ -9,6 +9,7 @@ import { PLAYBOOKS } from "@/data/playbooks";
 import type { Incident, Deadline } from "@/types/incident";
 import { buildNotification, copyNotification } from "@/lib/notifications";
 import { NotificationCenter } from "./NotificationCenter";
+import { NotificationTemplateBank } from "./NotificationTemplateBank";
 
 const phaseToIR: Record<string, string> = { iocs: "ident", contain: "contain", erad: "erad", recover: "recover" };
 const STAKEHOLDER_LABELS: Record<string, string> = {
@@ -239,7 +240,10 @@ export function Commander() {
   }
 
   // Active Incident
-  const tabs = ["overview", "timeline", "escalation", "workstreams", "expenses", "notifications", "summaries"];
+  const tabs = ["overview", "roster", "timeline", "escalation", "workstreams", "expenses", "notifications", "summaries"];
+  // Author capture for timeline / escalation entries. Persisted in
+  // localStorage so the IC doesn't re-enter their name every event.
+  const currentAuthor = (typeof window !== "undefined" && window.localStorage.getItem("sentry_incident_author")) || "";
 
   return (
     <div>
@@ -277,14 +281,33 @@ export function Commander() {
           {deadlines.map((d, i) => {
             const tc = d.status === "OVERDUE" ? colors.red : d.status === "WARNING" ? colors.orange : colors.green;
             return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 5, background: d.status !== "ON TRACK" ? tc + "10" : "transparent", border: `1px solid ${tc}22` }}>
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  // Switch to the Notifications tab and pre-select the matching
+                  // template via a global hint the NotificationCenter reads.
+                  try {
+                    window.sessionStorage.setItem("sentry_notify_for_deadline", d.label);
+                  } catch { /* private mode */ }
+                  setTab("notifications");
+                }}
+                title={`Open notification draft for ${d.label}`}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "5px 8px",
+                  borderRadius: 5, background: d.status !== "ON TRACK" ? tc + "10" : "transparent",
+                  border: `1px solid ${tc}22`, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = tc + "22"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = d.status !== "ON TRACK" ? tc + "10" : "transparent"; }}
+              >
                 <span style={{ fontSize: 10 }}>{d.status === "OVERDUE" ? "🔴" : d.status === "WARNING" ? "🟡" : "🟢"}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ color: colors.text, fontSize: 9, fontWeight: 600 }}>{d.label}</div>
                   <div style={{ color: colors.textDim, fontSize: 7 }}>{d.hrs < 24 ? d.hrs + "hr" : Math.round(d.hrs / 24) + "d"}</div>
                 </div>
                 <Badge color={tc} className="text-[7px]">{d.status}</Badge>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -467,11 +490,134 @@ export function Commander() {
                   {i < inc.timeline.length - 1 && <div style={{ width: 1, flex: 1, background: colors.panelBorder, marginTop: 2 }} />}
                 </div>
                 <div>
-                  <div style={{ color: colors.textDim, fontSize: 8, fontWeight: 600 }}>{t.time} · {t.elapsed}</div>
+                  <div style={{ color: colors.textDim, fontSize: 8, fontWeight: 600 }}>
+                    {t.time} · {t.elapsed}
+                    {t.by && <span style={{ color: colors.tealLight, marginLeft: 6 }}>· {t.by}</span>}
+                  </div>
                   <div style={{ color: colors.text, fontSize: 10, marginTop: 1 }}>{t.event}</div>
                 </div>
               </div>
             ))}
+        </Card>
+      )}
+
+      {/* Roster — incident-active responders with contact + time-on-incident */}
+      {tab === "roster" && (
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <div style={{ color: colors.white, fontSize: 13, fontWeight: 700 }}>Incident Roster</div>
+              <div style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
+                Everyone actively working this incident. Hours roll up to the Expenses tab; per-member rates override the fallback.
+              </div>
+            </div>
+            <Button size="sm" onClick={async () => {
+              const r = await modal.showPrompt(
+                "Add team member to roster",
+                [
+                  { key: "name",  label: "Full Name",  required: true },
+                  { key: "title", label: "Title",      placeholder: "e.g. SOC Analyst" },
+                  { key: "role",  label: "Incident Role", placeholder: "e.g. Forensics Lead", defaultValue: "Responder" },
+                  { key: "email", label: "Email",      placeholder: "name@org.com" },
+                  { key: "phone", label: "Phone",      placeholder: "(555) 000-0000" },
+                  { key: "rate",  label: "Hourly Rate (USD)", placeholder: `${inc.internalCostRate} (fallback)` },
+                ],
+                "Per-member rate is optional — leave blank to use the incident fallback rate.",
+              );
+              if (!r) return;
+              const rate = parseFloat(r.rate || "");
+              setInc((p) => ({ ...p, members: [...p.members, {
+                name: r.name, role: r.role || "Responder", hours: 0,
+                title: r.title || undefined, email: r.email || undefined,
+                phone: r.phone || undefined,
+                rate: Number.isFinite(rate) && rate > 0 ? rate : undefined,
+              }] }));
+              void addTL(`${r.name} added to roster${r.title ? ` (${r.title})` : ""}`);
+            }}>+ Add to roster</Button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <Card style={{ textAlign: "center", padding: "10px 12px" }}>
+              <div style={{ fontSize: 8, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Responders</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: colors.teal }}>{inc.members.length}</div>
+            </Card>
+            <Card style={{ textAlign: "center", padding: "10px 12px" }}>
+              <div style={{ fontSize: 8, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Hours Booked</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: colors.text }}>{totalHrs.toFixed(1)}</div>
+            </Card>
+            <Card style={{ textAlign: "center", padding: "10px 12px" }}>
+              <div style={{ fontSize: 8, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.08em" }}>Labor Cost To Date</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: colors.orange }}>${intCost.toLocaleString()}</div>
+            </Card>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: "block", fontSize: 9, color: colors.textMuted, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+              Fallback rate (used when a member has no rate override)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: colors.textMuted, fontSize: 12 }}>$</span>
+              <Input
+                type="number"
+                value={String(inc.internalCostRate || 150)}
+                onChange={(v) => setInc((p) => ({ ...p, internalCostRate: parseFloat(v) || 150 }))}
+                style={{ marginBottom: 0, width: 100 }}
+              />
+              <span style={{ color: colors.textDim, fontSize: 11 }}>/ hour</span>
+            </div>
+          </div>
+
+          {/* Roster table */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1.3fr 0.7fr 0.7fr 0.4fr", gap: 6, padding: "6px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+            {["Name / Role", "Title", "Contact", "Rate", "Hours", ""].map((h) => (
+              <span key={h} style={{ color: colors.textDim, fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{h}</span>
+            ))}
+          </div>
+          {inc.members.length === 0 ? (
+            <div style={{ padding: "16px 0", textAlign: "center", color: colors.textDim, fontSize: 11 }}>
+              No one on the roster yet. Use <strong>+ Add to roster</strong> to log a responder.
+            </div>
+          ) : inc.members.map((raw, i) => {
+            const m = typeof raw === "string"
+              ? { name: raw, role: "Responder", hours: 0, title: "", email: "", phone: "", rate: undefined as number | undefined }
+              : { name: raw.name ?? "Unknown", role: raw.role ?? "Responder", hours: raw.hours ?? 0, title: raw.title ?? "", email: raw.email ?? "", phone: raw.phone ?? "", rate: raw.rate };
+            const memberCost = m.hours * (m.rate && m.rate > 0 ? m.rate : (inc.internalCostRate || 150));
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1.3fr 0.7fr 0.7fr 0.4fr", gap: 6, padding: "8px 0", borderBottom: `1px solid ${colors.panelBorder}`, alignItems: "center" }}>
+                <div>
+                  <div style={{ color: colors.text, fontSize: 11, fontWeight: 600 }}>{m.name}</div>
+                  <div style={{ color: colors.textDim, fontSize: 9 }}>{m.role}</div>
+                </div>
+                <Input value={m.title} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), title: v } : x) }))} placeholder="Title" style={{ marginBottom: 0 }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <Input value={m.email} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), email: v } : x) }))} placeholder="email" style={{ marginBottom: 0, fontSize: 10 }} />
+                  <Input value={m.phone} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), phone: v } : x) }))} placeholder="phone" style={{ marginBottom: 0, fontSize: 10 }} />
+                </div>
+                <Input
+                  type="number"
+                  value={m.rate !== undefined ? String(m.rate) : ""}
+                  onChange={(v) => {
+                    const n = parseFloat(v);
+                    setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), rate: Number.isFinite(n) && n > 0 ? n : undefined } : x) }));
+                  }}
+                  placeholder={`$${inc.internalCostRate || 150}`}
+                  style={{ marginBottom: 0 }}
+                />
+                <Input type="number" value={String(m.hours)} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), hours: parseFloat(v) || 0 } : x) }))} style={{ marginBottom: 0 }} />
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setInc((p) => ({ ...p, members: p.members.filter((_, idx) => idx !== i) }));
+                  void addTL(`${m.name} removed from roster`);
+                }} style={{ color: colors.red }}>✕</Button>
+              </div>
+            );
+          })}
+
+          {inc.members.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 0 0", color: colors.textMuted, fontSize: 10 }}>
+              <span style={{ marginRight: 8 }}>Cost so far:</span>
+              <span style={{ color: colors.orange, fontWeight: 700 }}>${intCost.toLocaleString()}</span>
+            </div>
+          )}
         </Card>
       )}
 
@@ -498,18 +644,70 @@ export function Commander() {
           </div>
           {inc.escalation.map((e, i) => {
             const sc = e.status === "Complete" ? colors.green : e.status === "In Progress" ? colors.teal : colors.textDim;
+            const decisionColor = e.decision === "Escalate" ? colors.red
+              : e.decision === "Hold" ? colors.orange
+              : e.decision === "Notified" ? colors.teal
+              : e.decision === "Acknowledged" ? colors.green
+              : colors.textDim;
             return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: sc + "22", color: sc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{e.p}</div>
-                <div style={{ flex: 1, minWidth: 80 }}>
-                  <div style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{e.role}</div>
+              <div key={i} style={{ padding: "8px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: sc + "22", color: sc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{e.p}</div>
+                  <div style={{ flex: 1, minWidth: 80 }}>
+                    <div style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{e.role}</div>
+                  </div>
+                  <Input value={e.owner || ""} onChange={(v) => setInc((p) => ({ ...p, escalation: p.escalation.map((x, idx) => idx === i ? { ...x, owner: v } : x) }))} placeholder="Owner" style={{ marginBottom: 0, width: 110 }} />
+                  <Input value={e.contact || ""} onChange={(v) => setInc((p) => ({ ...p, escalation: p.escalation.map((x, idx) => idx === i ? { ...x, contact: v } : x) }))} placeholder="email / phone" style={{ marginBottom: 0, width: 130 }} />
+                  <select value={e.status}
+                    onChange={(ev) => {
+                      const v = ev.target.value as typeof e.status;
+                      setInc((p) => ({ ...p, escalation: p.escalation.map((x, idx) => idx === i ? { ...x, status: v } : x) }));
+                      if (v === "Complete") void addTL(`Escalation closed: ${e.role}${e.owner ? ` (${e.owner})` : ""}`);
+                      else if (v === "In Progress") void addTL(`Escalation acknowledged: ${e.role}${e.owner ? ` (${e.owner})` : ""}`);
+                    }}
+                    style={{ padding: "3px 6px", background: colors.obsidianM, border: `1px solid ${colors.panelBorder}`, borderRadius: 4, color: sc, fontSize: 9, fontFamily: "inherit" }}>
+                    <option>Pending</option><option>In Progress</option><option>Complete</option><option>N/A</option>
+                  </select>
                 </div>
-                <Input value={e.owner || ""} onChange={(v) => setInc((p) => ({ ...p, escalation: p.escalation.map((x, idx) => idx === i ? { ...x, owner: v } : x) }))} placeholder="Owner" style={{ marginBottom: 0, width: 100 }} />
-                <select value={e.status}
-                  onChange={(ev) => { const v = ev.target.value as typeof e.status; setInc((p) => ({ ...p, escalation: p.escalation.map((x, idx) => idx === i ? { ...x, status: v } : x) })); if (v === "Complete") addTL(`Escalation: ${e.role} complete`); }}
-                  style={{ padding: "3px 6px", background: colors.obsidianM, border: `1px solid ${colors.panelBorder}`, borderRadius: 4, color: sc, fontSize: 9, fontFamily: "inherit" }}>
-                  <option>Pending</option><option>In Progress</option><option>Complete</option><option>N/A</option>
-                </select>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap", paddingLeft: 26 }}>
+                  <span style={{ color: colors.textDim, fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>DECISION:</span>
+                  {(["Escalate", "Hold", "Notified", "Acknowledged", "N/A"] as const).map((d) => {
+                    const active = e.decision === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => {
+                          const now = new Date().toLocaleString();
+                          setInc((p) => ({
+                            ...p,
+                            escalation: p.escalation.map((x, idx) => idx === i
+                              ? { ...x, decision: d, decidedAt: now, decidedBy: currentAuthor || x.decidedBy }
+                              : x),
+                          }));
+                          // Auto-write a timeline entry for the decision so the chain of custody is captured.
+                          void addTL(
+                            `Escalation ${d.toLowerCase()}: ${e.role}` +
+                            (e.owner ? ` → ${e.owner}` : "") +
+                            (e.contact ? ` (${e.contact})` : "")
+                          );
+                        }}
+                        style={{
+                          padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, fontFamily: "inherit",
+                          background: active ? decisionColor + "22" : "transparent",
+                          color: active ? decisionColor : colors.textMuted,
+                          border: `1px solid ${active ? decisionColor + "55" : colors.panelBorder}`,
+                          cursor: "pointer",
+                        }}
+                      >{d}</button>
+                    );
+                  })}
+                  {e.decidedAt && (
+                    <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 4 }}>
+                      {e.decidedAt}{e.decidedBy ? ` · ${e.decidedBy}` : ""}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -521,7 +719,12 @@ export function Commander() {
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
             {[
-              { l: "Internal", v: `$${intCost.toLocaleString()}`, c: colors.teal, s: `${totalHrs.toFixed(1)}hrs × $${inc.internalCostRate}/hr` },
+              { l: "Internal", v: `$${intCost.toLocaleString()}`, c: colors.teal, s: (() => {
+                const overrides = inc.members.filter((m) => typeof m !== "string" && typeof m.rate === "number" && m.rate > 0).length;
+                return overrides > 0
+                  ? `${totalHrs.toFixed(1)}hrs · ${overrides} custom rate${overrides === 1 ? "" : "s"}`
+                  : `${totalHrs.toFixed(1)}hrs × $${inc.internalCostRate}/hr`;
+              })() },
               { l: "External", v: `$${extCost.toLocaleString()}`, c: colors.orange, s: `${inc.expenses.length} items` },
               { l: "Total", v: `$${totalCost.toLocaleString()}`, c: colors.white, s: "" },
             ].map((x) => (
@@ -706,7 +909,12 @@ export function Commander() {
         </div>
       )}
 
-      {tab === "notifications" && <NotificationCenter incident={inc} />}
+      {tab === "notifications" && (
+        <>
+          <NotificationTemplateBank incident={inc} />
+          <NotificationCenter incident={inc} />
+        </>
+      )}
 
       {tab === "summaries" && (
         <div>

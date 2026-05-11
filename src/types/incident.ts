@@ -34,6 +34,8 @@ export interface TimelineEntry {
   time: string;
   event: string;
   elapsed: string;
+  /** Who entered the event. Captured at write time; survives later renames. */
+  by?: string;
 }
 
 export interface Workstream {
@@ -65,6 +67,14 @@ export interface EscalationEntry {
   owner: string;
   status: "Pending" | "In Progress" | "Complete" | "N/A";
   p: number;
+  /** Contact detail (email/phone) for the named owner. */
+  contact?: string;
+  /** Decision recorded by the IC for this escalation chain step. */
+  decision?: "Escalate" | "Hold" | "Notified" | "Acknowledged" | "N/A";
+  /** When the decision was made — feeds the auto-timeline entry. */
+  decidedAt?: string;
+  /** Who made the decision (typically the IC). */
+  decidedBy?: string;
 }
 
 export interface ExpenseDocument {
@@ -101,6 +111,12 @@ export interface IncidentMember {
   name: string;
   role: string;
   hours: number;
+  /** Optional contact + organizational info captured for the incident roster. */
+  email?: string;
+  phone?: string;
+  title?: string;
+  /** Hourly rate override. When omitted, the incident's internalCostRate applies. */
+  rate?: number;
 }
 
 export interface Deadline {
