@@ -238,28 +238,8 @@ export default async function ModulePage({ params }: { params: Promise<{ id: str
                 alt={`Sentry — ${mod.label}`}
                 style={{ display: "block", width: "100%", height: "auto" }}
               />
-              {callouts.slice(0, mod.highlights.length).map((c, i) => (
-                <span
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: `${c.x}%`,
-                    top: `${c.y}%`,
-                    transform: "translate(-50%, -50%)",
-                    width: 32, height: 32, borderRadius: "50%",
-                    background: `linear-gradient(135deg, ${colors.teal}, #009A8E)`,
-                    color: "#0A0E14",
-                    fontSize: 14, fontWeight: 800,
-                    fontFamily: "JetBrains Mono, monospace",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "2px solid #0A0E14",
-                    boxShadow: "0 0 0 2px rgba(0,180,166,0.55), 0 4px 14px rgba(0,180,166,0.45)",
-                    pointerEvents: "none",
-                  }}
-                >
-                  {i + 1}
-                </span>
-              ))}
+              {/* Numbered callouts removed — kept the screenshot clean. Highlights
+                  list (right column) stands on its own. */}
             </div>
           </div>
 
@@ -276,7 +256,7 @@ export default async function ModulePage({ params }: { params: Promise<{ id: str
             }}>
               What you get
             </h2>
-            <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
               {mod.highlights.map((h, i) => (
                 <li key={i} style={{
                   display: "flex",
@@ -287,17 +267,19 @@ export default async function ModulePage({ params }: { params: Promise<{ id: str
                   border: `1px solid ${colors.panelBorder}`,
                   borderRadius: 10,
                 }}>
-                  <span style={{
-                    flexShrink: 0,
-                    width: 28, height: 28, borderRadius: "50%",
-                    background: colors.teal + "1F",
-                    border: `1px solid ${colors.teal}55`,
-                    color: colors.tealLight,
-                    fontSize: 12, fontWeight: 800,
-                    fontFamily: "JetBrains Mono, monospace",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {i + 1}
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 28, height: 28, borderRadius: "50%",
+                      background: colors.teal + "1F",
+                      border: `1px solid ${colors.teal}55`,
+                      color: colors.tealLight,
+                      fontSize: 14, fontWeight: 800,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    aria-hidden="true"
+                  >
+                    ✓
                   </span>
                   <span style={{
                     color: colors.text,
@@ -307,7 +289,7 @@ export default async function ModulePage({ params }: { params: Promise<{ id: str
                   }}>{h}</span>
                 </li>
               ))}
-            </ol>
+            </ul>
           </aside>
         </div>
 

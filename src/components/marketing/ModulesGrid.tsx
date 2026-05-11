@@ -266,34 +266,9 @@ function Lightbox({ mod, onClose }: { mod: Mod; onClose: () => void }) {
                   alt={mod.label}
                   style={{ display: "block", width: "100%", height: "auto", background: "#080C12" }}
                 />
-                {(mod.callouts ?? DEFAULT_CALLOUTS).slice(0, mod.highlights.length).map((c, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      position: "absolute",
-                      left: `${c.x}%`,
-                      top: `${c.y}%`,
-                      transform: "translate(-50%, -50%)",
-                      width: 28,
-                      height: 28,
-                      borderRadius: "50%",
-                      background: "linear-gradient(135deg, #00B4A6, #009A8E)",
-                      color: "#0A0E14",
-                      fontSize: 13,
-                      fontWeight: 800,
-                      fontFamily: "JetBrains Mono, monospace",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      border: "2px solid #0A0E14",
-                      boxShadow: "0 0 0 2px rgba(0, 180, 166, 0.55), 0 4px 14px rgba(0, 180, 166, 0.45)",
-                      pointerEvents: "none",
-                      zIndex: 2,
-                    }}
-                  >
-                    {i + 1}
-                  </span>
-                ))}
+                {/* Numbered callouts removed — they didn't reliably map to features
+                    on the screenshot after the dashboard redesign. Highlights below
+                    stand on their own. */}
               </div>
             </div>
           </div>
@@ -311,7 +286,7 @@ function Lightbox({ mod, onClose }: { mod: Mod; onClose: () => void }) {
               <div style={{ color: colors.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "Figtree, sans-serif", marginBottom: 10 }}>
                 What you get
               </div>
-              <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                 {mod.highlights.map((h, i) => (
                   <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                     <span
@@ -321,16 +296,17 @@ function Lightbox({ mod, onClose }: { mod: Mod; onClose: () => void }) {
                         background: colors.teal + "1F",
                         border: `1px solid ${colors.teal}55`,
                         color: colors.tealLight,
-                        fontSize: 11, fontWeight: 800, fontFamily: "JetBrains Mono, monospace",
+                        fontSize: 12, fontWeight: 800,
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}
+                      aria-hidden="true"
                     >
-                      {i + 1}
+                      ✓
                     </span>
                     <span style={{ color: colors.text, fontSize: 13, lineHeight: 1.55, fontFamily: "Source Sans 3, sans-serif" }}>{h}</span>
                   </li>
                 ))}
-              </ol>
+              </ul>
             </div>
           </div>
         </div>
