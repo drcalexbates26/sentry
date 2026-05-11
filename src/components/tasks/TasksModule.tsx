@@ -11,13 +11,25 @@ const COLS: TaskStatus[] = ["Backlog", "In Progress", "In Review", "Done"];
 const IR_PHASE_OPTIONS = [{ value: "", label: "None" }, ...IR_PHASES.map((p) => ({ value: p.id, label: `${p.ico} ${p.n}` }))];
 
 export function TasksModule() {
-  const { tasks, addTask, updateTask, activeIncident, addTaskWithTicket } = useStore();
+  const { tasks, addTask, updateTask, deleteTask, activeIncident, addTaskWithTicket } = useStore();
   const colors = useColors();
   const priColors: Record<string, string> = { Critical: colors.red, High: colors.orange, Medium: colors.yellow, Low: colors.green };
   const modal = useModal();
   const [showNew, setShowNew] = useState(false);
   const [nf, setNf] = useState({ title: "", priority: "Medium", assignee: "", irPhase: "" });
   const [editId, setEditId] = useState<number | null>(null);
+
+  const handleDelete = async (id: number, title: string) => {
+    const ok = await modal.showConfirm(
+      "Delete this task?",
+      `"${title}" will be permanently removed from the board. This cannot be undone.`,
+      "danger",
+    );
+    if (ok) {
+      deleteTask(id);
+      setEditId((prev) => (prev === id ? null : prev));
+    }
+  };
 
   return (
     <div>
@@ -82,9 +94,21 @@ export function TasksModule() {
                 </div>
               )}
               {colTasks.map((task) => (
-                <div key={task.id} style={{ background: colors.panel, borderRadius: 7, padding: 10, marginBottom: 8, borderLeft: `3px solid ${priColors[task.priority] || colors.teal}`, cursor: "pointer" }}
+                <div key={task.id} style={{ background: colors.panel, borderRadius: 7, padding: 10, marginBottom: 8, borderLeft: `3px solid ${priColors[task.priority] || colors.teal}`, cursor: "pointer", position: "relative" }}
                   onClick={() => setEditId(editId === task.id ? null : task.id)}>
-                  <div style={{ color: colors.white, fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{task.title}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+                    <div style={{ color: colors.white, fontSize: 11, fontWeight: 600, flex: 1 }}>{task.title}</div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void handleDelete(task.id, task.title); }}
+                      title="Delete task"
+                      style={{
+                        background: "transparent", border: "none", cursor: "pointer",
+                        color: colors.textDim, fontSize: 12, padding: 0, lineHeight: 1, flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.red; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textDim; }}
+                    >✕</button>
+                  </div>
                   <div style={{ display: "flex", gap: 3, marginBottom: 4, flexWrap: "wrap" }}>
                     <Badge color={priColors[task.priority]}>{task.priority}</Badge>
                     {task.irPhase && <Badge color={colors.cyan}>{IR_PHASES.find((p) => p.id === task.irPhase)?.n || task.irPhase}</Badge>}
@@ -106,6 +130,10 @@ export function TasksModule() {
                         {COLS.filter((c) => c !== col).map((c) => (
                           <Button key={c} variant="secondary" size="sm" onClick={() => updateTask(task.id, { status: c })}>→ {c}</Button>
                         ))}
+                        {col !== "Done" && (
+                          <Button size="sm" onClick={() => updateTask(task.id, { status: "Done" })}>✓ Mark Done</Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => void handleDelete(task.id, task.title)} style={{ color: colors.red }}>Delete</Button>
                       </div>
                     </div>
                   )}

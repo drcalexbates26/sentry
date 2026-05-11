@@ -102,6 +102,8 @@ interface AppState {
   addTasks: (tasks: TaskItem[]) => void;
   updateTask: (id: number, updates: Partial<TaskItem>) => void;
   addTaskWithTicket: (task: TaskItem, incidentTitle: string) => void;
+  /** Permanently remove a task from the board. */
+  deleteTask: (id: number) => void;
 
   // Cases
   cases: PlaybookCase[];
@@ -426,6 +428,7 @@ export const useStore = create<AppState>((set) => ({
   addTasks: (newTasks) => set((s) => ({ tasks: [...newTasks, ...s.tasks] })),
   updateTask: (id, updates) =>
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)) })),
+  deleteTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
   addTaskWithTicket: (task, incidentTitle) =>
     set((s) => {
       const ticketId = task.id + 1000000;
