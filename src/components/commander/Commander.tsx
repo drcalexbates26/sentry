@@ -80,7 +80,12 @@ export function Commander() {
     }
   }, [inc, editing, setActiveIncident]);
   const addTL = (event: string) => setInc((p) => ({ ...p, timeline: [...p.timeline, { time: new Date().toLocaleString(), event, elapsed }] }));
-  const totalHrs = inc.members.reduce((a, m) => a + m.hours, 0);
+  // Defensive: legacy data may have members as strings; normalize to hours=0
+  // so the sum stays a number instead of NaN. Same shape-shim as the render.
+  const totalHrs = inc.members.reduce((a, m) => {
+    const hours = typeof m === "string" ? 0 : (typeof m.hours === "number" ? m.hours : 0);
+    return a + hours;
+  }, 0);
   const intCost = totalHrs * (inc.internalCostRate || 150);
   const extCost = (inc.expenses || []).reduce((a, e) => a + e.amount, 0);
   const totalCost = intCost + extCost;
@@ -426,15 +431,23 @@ export function Commander() {
               <div style={{ fontSize: 9, color: colors.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Team</div>
               <Button size="sm" onClick={async () => { const r = await modal.showPrompt("Add Team Member", [{ key: "name", label: "Name", required: true }, { key: "role", label: "Role", placeholder: "Responder", defaultValue: "Responder" }]); if (r) { setInc((p) => ({ ...p, members: [...p.members, { name: r.name, role: r.role || "Responder", hours: 0 }] })); addTL(`${r.name} joined`); } }}>+ Add</Button>
             </div>
-            {inc.members.map((m, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
-                <div style={{ flex: 1 }}>
-                  <span style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{m.name}</span>
-                  <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 4 }}>{m.role}</span>
+            {inc.members.map((raw, i) => {
+              // Older datasets stored members as plain strings ("Jane Doe").
+              // Normalize to the typed shape so a legacy demo / tenant blob
+              // doesn't blow up the whole module.
+              const m = typeof raw === "string"
+                ? { name: raw, role: "Responder", hours: 0 }
+                : { name: raw.name ?? "Unknown", role: raw.role ?? "Responder", hours: typeof raw.hours === "number" ? raw.hours : 0 };
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: `1px solid ${colors.panelBorder}` }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ color: colors.white, fontSize: 10, fontWeight: 600 }}>{m.name}</span>
+                    <span style={{ color: colors.textDim, fontSize: 8, marginLeft: 4 }}>{m.role}</span>
+                  </div>
+                  <Input value={String(m.hours)} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...(typeof x === "string" ? { name: x, role: "Responder", hours: 0 } : x), hours: parseFloat(v) || 0 } : x) }))} type="number" style={{ marginBottom: 0, width: 55 }} />
                 </div>
-                <Input value={m.hours.toString()} onChange={(v) => setInc((p) => ({ ...p, members: p.members.map((x, idx) => idx === i ? { ...x, hours: parseFloat(v) || 0 } : x) }))} type="number" style={{ marginBottom: 0, width: 55 }} />
-              </div>
-            ))}
+              );
+            })}
           </Card>
         </div>
       )}

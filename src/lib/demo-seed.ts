@@ -183,7 +183,13 @@ const activeIncident = {
   expenses: [],
   summaries: [],
   notifications: [],
-  members: ["Jordan Pierce", "Riley Chen", "Morgan Patel", "Sam Rosenberg", "Dark Rock IR Lead"],
+  members: [
+    { name: "Jordan Pierce",     role: "Incident Commander", hours: 12 },
+    { name: "Riley Chen",        role: "SOC Lead",           hours: 9 },
+    { name: "Morgan Patel",      role: "Forensics",          hours: 7 },
+    { name: "Sam Rosenberg",     role: "Legal",              hours: 3 },
+    { name: "Dark Rock IR Lead", role: "External IR",        hours: 11 },
+  ],
 };
 
 // ── Closed incident in the log ─────────────────────────────────────

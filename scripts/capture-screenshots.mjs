@@ -89,19 +89,67 @@ async function main() {
   await page.goto(BASE + "/app", { waitUntil: "networkidle" });
   await page.waitForFunction(() => !!window.__sentryStore, { timeout: 15000 });
 
-  // Make sure the sidebar is open and groups are expanded so screenshots
-  // reflect what an active user sees.
+  // Force dark mode + open sidebar + expand all collapsible groups so the
+  // screenshots reflect the canonical "everything visible" view.
   await page.evaluate(() => {
     const s = window.__sentryStore;
-    s.setState({ sidebarOpen: true, collapsedGroups: {} });
+    s.setState({ sidebarOpen: true, collapsedGroups: {}, themeMode: "dark" });
   });
+  // Let the theme switch and any first-paint async re-renders settle before
+  // we start cycling through modules.
+  await page.waitForTimeout(1200);
+
+  /**
+   * Heuristic guard: don't overwrite a real screenshot with a blank or
+   * error-state render. We check that the page contains at least one
+   * SectionHeader-style h2 (every module renders one) and that we're not
+   * sitting on a Next.js error boundary.
+   */
+  async function looksHealthy() {
+    return page.evaluate(() => {
+      const text = document.body.innerText || "";
+      const hasError = !!document.querySelector("[data-nextjs-error]") ||
+        text.includes("Application error") ||
+        text.includes("This page could not be found") ||
+        text.includes("Unhandled Runtime Error");
+      // A populated module has hundreds of characters of visible text;
+      // blank or near-blank pages have well under that.
+      const textLength = text.replace(/\s+/g, "").length;
+      // Light-mode = ~white sidebar background. Dark-mode sidebar uses obsidianL.
+      const sidebar = document.querySelector("aside");
+      const bg = sidebar ? getComputedStyle(sidebar).backgroundColor : "";
+      const rgbMatch = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+      const sidebarBrightness = rgbMatch
+        ? (parseInt(rgbMatch[1]) + parseInt(rgbMatch[2]) + parseInt(rgbMatch[3])) / 3
+        : 0;
+      return { hasError, textLength, sidebarBrightness };
+    }).then((r) => {
+      if (r.hasError) return { ok: false, reason: "error boundary" };
+      // Module shells (sidebar + topbar) alone render ~150-200 chars. A
+      // legitimate empty-state ("No active incident yet") still pushes well
+      // above that. 40 chars catches truly-blank renders without flagging
+      // modules whose default view is an empty-state card.
+      if (r.textLength < 40) return { ok: false, reason: `too little content (${r.textLength} chars)` };
+      if (r.sidebarBrightness > 180) return { ok: false, reason: "light-mode rendered" };
+      return { ok: true };
+    }).catch(() => ({ ok: false, reason: "evaluate failed" }));
+  }
 
   let ok = 0, fail = 0;
   for (const m of MODULES) {
     try {
       await page.evaluate((id) => window.__sentryStore.setState({ page: id }), m.id);
-      // Give modules with charts / async fetches a moment to settle.
-      await page.waitForTimeout(900);
+      // Give modules with charts / async fetches a moment to settle. Some
+      // modules (Dashboard, Threat Intel) load remote data — wait longer.
+      const settleMs = ["dash", "threatintel", "incidentlog", "commander"].includes(m.id) ? 1800 : 1100;
+      await page.waitForTimeout(settleMs);
+
+      const health = await looksHealthy(m.id);
+      if (!health.ok) {
+        console.warn(`  – Skipped ${m.file}: ${health.reason}`);
+        fail++;
+        continue;
+      }
       await page.screenshot({ path: join(OUT_DIR, m.file) });
       console.log(`✓ ${m.file}`);
       ok++;
